@@ -21,12 +21,93 @@ st.set_page_config(
 # ─── CSS tweaks ───────────────────────────────────────────────
 st.markdown("""
 <style>
-[data-testid="stSidebar"] { background: #1e3a8a; }
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+    border-right: none;
+}
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+[data-testid="stSidebar"] .stRadio label {
+    background: rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 8px 12px !important;
+    margin-bottom: 4px;
+    display: block;
+    transition: background 0.15s;
+}
+[data-testid="stSidebar"] .stRadio label:hover {
+    background: rgba(255,255,255,0.15) !important;
+}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: #93c5fd !important;
+    font-size: 12px;
+}
 [data-testid="stSidebarNav"] { display:none; }
-.metric-card { background:#fff; border-radius:12px; padding:16px 20px;
-               box-shadow:0 1px 6px rgba(0,0,0,.08); }
-div[data-testid="metric-container"] > div { font-size:13px; }
+
+/* ── Main background ── */
+[data-testid="stAppViewContainer"] { background: #f0f4f8; }
+[data-testid="stHeader"] { background: transparent; }
+
+/* ── Metric cards ── */
+[data-testid="metric-container"] {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-size: 1.6rem !important;
+    font-weight: 700;
+    color: #1e293b;
+}
+[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+    font-size: 0.78rem !important;
+    color: #64748b;
+    font-weight: 500;
+}
+[data-testid="metric-container"] [data-testid="stMetricDelta"] {
+    font-size: 0.8rem !important;
+}
+
+/* ── Chart containers ── */
+[data-testid="stPlotlyChart"] {
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+/* ── Section headers ── */
+h2, h3 { color: #1e293b !important; font-weight: 700 !important; }
+h1 { color: #1e293b !important; }
+
+/* ── Divider ── */
+hr { border-color: #e2e8f0 !important; }
+
+/* ── DataTable ── */
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+}
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] {
+    background: rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 4px;
+}
+
+/* ── Progress bar ── */
+[data-testid="stProgressBar"] > div > div {
+    border-radius: 6px;
+}
+
+/* ── Caption ── */
+[data-testid="stCaptionContainer"] p { color: #93c5fd !important; }
 </style>
 """, unsafe_allow_html=True)
 
