@@ -339,44 +339,49 @@ with st.sidebar:
     ], label_visibility="collapsed")
 
     st.divider()
-    st.markdown("**📥 แหล่งข้อมูล**")
-    src = st.radio("src", ["📊 Google Sheets", "📁 อัพโหลด Excel"],
-                   label_visibility="collapsed")
+    st.markdown("**📥 นำเข้าข้อมูล**")
 
-    if src == "📊 Google Sheets":
+    tab_gs, tab_file = st.tabs(["🔗 Google Sheets", "📁 Upload File"])
+
+    with tab_gs:
         gs_url = st.text_input(
-            "Google Sheets URL",
+            "วาง URL ที่นี่",
             value="https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit",
-            label_visibility="collapsed",
-            placeholder="วาง URL Google Sheets ที่นี่"
+            label_visibility="visible",
+            placeholder="https://docs.google.com/spreadsheets/d/..."
         )
-        if st.button("🔄 โหลดจาก Google Sheets", use_container_width=True):
+        if st.button("🔄 โหลดข้อมูล", use_container_width=True, key="btn_gs"):
             with st.spinner("กำลังดาวน์โหลด..."):
                 try:
                     file_bytes = fetch_gsheet(gs_url)
                     st.session_state.data = parse_excel(file_bytes)
-                    st.session_state["data_source"] = "Google Sheets"
+                    st.session_state["data_source"] = "🔗 Google Sheets"
                     st.success("โหลดสำเร็จ ✅")
                     st.rerun()
                 except Exception as e:
                     st.error(f"โหลดไม่ได้: {e}")
-                    st.caption("💡 ตรวจสอบว่า Sheet เปิดเป็น Public (Anyone with link can view)")
-    else:
-        uploaded = st.file_uploader("📂 อัพโหลด Excel", type=["xlsx","xls"],
-                                    label_visibility="collapsed")
+                    st.caption("⚠️ Sheet ต้องเปิด Public ก่อน")
+
+    with tab_file:
+        uploaded = st.file_uploader(
+            "เลือกไฟล์ Excel",
+            type=["xlsx", "xls"],
+            label_visibility="visible",
+            key="file_upload"
+        )
         if uploaded:
             with st.spinner("กำลังอ่านไฟล์..."):
                 try:
                     st.session_state.data = parse_excel(uploaded.read())
-                    st.session_state["data_source"] = uploaded.name
-                    st.success(f"โหลดสำเร็จ ✅")
+                    st.session_state["data_source"] = f"📁 {uploaded.name}"
+                    st.success("โหลดสำเร็จ ✅")
                     st.rerun()
                 except Exception as e:
                     st.error(f"อ่านไม่ได้: {e}")
 
     st.divider()
-    src_label = st.session_state.get("data_source", "Default Data")
-    st.caption(f"📌 {src_label}")
+    src_label = st.session_state.get("data_source", "📦 Default Data")
+    st.caption(f"แหล่งข้อมูล: {src_label}")
     st.caption(f"รพ.สต. {st.session_state.data.get('total',0):,} แห่ง")
 
 D = st.session_state.data
