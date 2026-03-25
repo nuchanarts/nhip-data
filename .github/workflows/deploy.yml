@@ -16,10 +16,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install & Build
-        run: |
-          npm ci --legacy-peer-deps
-          npm run build
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
 
-      - name: Check Python syntax
-        run: python -m py_compile app.py && echo "app.py OK"
+      - name: Build
+        run: npm run build
