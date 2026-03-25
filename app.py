@@ -6,9 +6,7 @@ Deploy: https://nhipteam-dashboard.streamlit.app
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import json
-import math
 from pathlib import Path
 from io import BytesIO
 
@@ -109,7 +107,8 @@ def load_install_list():
 
 # ─── Parse Excel ─────────────────────────────────────────────
 def parse_excel(file_bytes):
-    import openpyxl, math
+    import openpyxl
+    from datetime import date, datetime
     wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
     sheets = wb.sheetnames
     d = dict(DEFAULT)
@@ -125,7 +124,11 @@ def parse_excel(file_bytes):
         rows = list(ws.iter_rows(values_only=True))
         js, pg, rg, mo, rdone, pcnt = {}, {}, {}, {}, {}, {}
         install_list, mig_done = [], 0
-        from datetime import date, datetime
+
+        def fmt_date(v):
+            if isinstance(v, (date, datetime)): return v.strftime('%d/%m/%Y')
+            return ''
+
         for row in rows[1:]:
             if not row[0]: continue
             j = safe_str(row[11]); p2 = safe_str(row[10])
@@ -150,10 +153,6 @@ def parse_excel(file_bytes):
                 yr = dt.year - 543 if dt.year > 2100 else dt.year
                 k = f"{yr}-{str(dt.month).zfill(2)}"
                 if not k.startswith('1969'): mo[k] = mo.get(k, 0) + 1
-
-            def fmt_date(v):
-                if isinstance(v, (date, datetime)): return v.strftime('%d/%m/%Y')
-                return ''
 
             if len(install_list) < 500:
                 install_list.append({
@@ -438,7 +437,7 @@ elif "ปริมาณข้อมูล" in page:
             color="status",
             color_discrete_map=color_map,
             hover_name="thai",
-            hover_data={"done":":.0f","inProgress":":.0f","total":":.0f","pct":":.1f","NAME_1":False,"status":True},
+            hover_data={"done":True,"inProgress":True,"total":True,"pct":True,"NAME_1":False,"status":False},
             labels={"done":"เสร็จแล้ว","inProgress":"กำลังติดตั้ง","total":"รวม","pct":"% เสร็จ","status":"สถานะ"},
             title="",
             category_orders={"status":list(color_map.keys())},
@@ -468,9 +467,10 @@ elif "ปริมาณข้อมูล" in page:
         df = pd.DataFrame(install_list)
         search = st.text_input("🔍 ค้นหา", placeholder="ชื่อ / hospcode / จังหวัด")
         if search:
-            mask = (df.get("name","").astype(str).str.contains(search, na=False) |
-                    df.get("hospcode","").astype(str).str.contains(search, na=False) |
-                    df.get("province","").astype(str).str.contains(search, na=False))
+            mask = pd.Series(False, index=df.index)
+            for col in ["name","hospcode","province"]:
+                if col in df.columns:
+                    mask = mask | df[col].astype(str).str.contains(search, na=False)
             df = df[mask]
         cols = [c for c in ["hospcode","region","name","province","amphoe",
                              "install_date","progress","status","responsible"] if c in df.columns]
