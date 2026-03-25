@@ -27,22 +27,70 @@ st.markdown("""
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
     border-right: none;
+    min-width: 240px !important;
+    max-width: 240px !important;
 }
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+
+/* เมนู radio — ไม่ตกบรรทัด */
+[data-testid="stSidebar"] .stRadio > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 [data-testid="stSidebar"] .stRadio label {
     background: rgba(255,255,255,0.07);
     border-radius: 8px;
-    padding: 8px 12px !important;
-    margin-bottom: 4px;
-    display: block;
+    padding: 9px 12px !important;
+    margin: 0 !important;
+    cursor: pointer;
     transition: background 0.15s;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 [data-testid="stSidebar"] .stRadio label:hover {
-    background: rgba(255,255,255,0.15) !important;
+    background: rgba(255,255,255,0.18) !important;
 }
+[data-testid="stSidebar"] .stRadio label[data-checked="true"],
+[data-testid="stSidebar"] .stRadio input:checked + div {
+    background: rgba(255,255,255,0.22) !important;
+    border-left: 3px solid #60a5fa;
+}
+[data-testid="stSidebar"] .stRadio label p {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+}
+/* ซ่อน radio circle */
+[data-testid="stSidebar"] .stRadio input[type="radio"] { display: none; }
+
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
     color: #93c5fd !important;
     font-size: 12px;
+}
+/* tabs ใน sidebar */
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
+    color: #93c5fd !important;
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+}
+[data-testid="stSidebar"] .stTabs [aria-selected="true"] {
+    color: #fff !important;
+    border-bottom: 2px solid #60a5fa !important;
+}
+[data-testid="stSidebar"] input[type="text"] {
+    background: rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(255,255,255,0.2) !important;
+    border-radius: 6px;
+    color: #fff !important;
+    font-size: 11px !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background: rgba(255,255,255,0.15) !important;
+    border: 1px solid rgba(255,255,255,0.3) !important;
+    color: #fff !important;
+    border-radius: 6px;
 }
 [data-testid="stSidebarNav"] { display:none; }
 
@@ -325,8 +373,18 @@ if "data" not in st.session_state:
 
 # ─── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🏥 NHIP Dashboard")
-    st.markdown("ระบบติดตามสถิติการติดตั้ง รพ.สต.")
+    st.markdown("""
+<div style="padding:16px 4px 8px 4px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;
+         display:flex;align-items:center;justify-content:center;font-size:20px;">🏥</div>
+    <div>
+      <div style="font-weight:700;font-size:16px;color:#fff;line-height:1.2;">NHIP</div>
+      <div style="font-size:11px;color:#93c5fd;line-height:1.2;">Dashboard</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
     st.divider()
 
     page = st.radio("เมนูหลัก", [
