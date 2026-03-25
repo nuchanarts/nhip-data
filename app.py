@@ -69,28 +69,83 @@ st.markdown("""
     color: #93c5fd !important;
     font-size: 12px;
 }
-/* tabs ใน sidebar */
+/* ── Tabs ใน sidebar ── */
+[data-testid="stSidebar"] .stTabs {
+    background: transparent !important;
+}
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
+    background: rgba(255,255,255,0.08) !important;
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
 [data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
+    background: transparent !important;
     color: #93c5fd !important;
     font-size: 12px !important;
-    padding: 4px 8px !important;
+    padding: 6px 10px !important;
+    border-radius: 6px !important;
+    border: none !important;
 }
 [data-testid="stSidebar"] .stTabs [aria-selected="true"] {
+    background: rgba(255,255,255,0.2) !important;
     color: #fff !important;
-    border-bottom: 2px solid #60a5fa !important;
+    font-weight: 600 !important;
 }
-[data-testid="stSidebar"] input[type="text"] {
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab-highlight"] {
+    display: none !important;
+}
+[data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
+    background: transparent !important;
+    padding: 8px 0 0 0 !important;
+}
+
+/* ── Text input ใน sidebar ── */
+[data-testid="stSidebar"] input[type="text"],
+[data-testid="stSidebar"] textarea {
     background: rgba(255,255,255,0.1) !important;
-    border: 1px solid rgba(255,255,255,0.2) !important;
-    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 6px !important;
     color: #fff !important;
     font-size: 11px !important;
 }
-[data-testid="stSidebar"] button[kind="secondary"] {
-    background: rgba(255,255,255,0.15) !important;
-    border: 1px solid rgba(255,255,255,0.3) !important;
+[data-testid="stSidebar"] input[type="text"]::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* ── File uploader ใน sidebar ── */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] {
+    background: rgba(255,255,255,0.08) !important;
+    border: 1.5px dashed rgba(255,255,255,0.3) !important;
+    border-radius: 8px !important;
+    padding: 8px !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+    background: transparent !important;
+    border: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] p,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] span,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] small {
+    color: #93c5fd !important;
+    font-size: 11px !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    background: transparent !important;
+    border: none !important;
+    min-height: 60px !important;
+}
+
+/* ── Button ใน sidebar ── */
+[data-testid="stSidebar"] button {
+    background: rgba(96,165,250,0.25) !important;
+    border: 1px solid rgba(96,165,250,0.5) !important;
     color: #fff !important;
-    border-radius: 6px;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+}
+[data-testid="stSidebar"] button:hover {
+    background: rgba(96,165,250,0.4) !important;
 }
 [data-testid="stSidebarNav"] { display:none; }
 
