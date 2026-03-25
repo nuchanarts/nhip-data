@@ -7,6 +7,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import json
+import re
+import urllib.request
 from pathlib import Path
 from io import BytesIO
 
@@ -298,6 +300,24 @@ def parse_excel(file_bytes):
 
     return d
 
+# ─── Google Sheets helper ─────────────────────────────────────
+def gsheet_to_export_url(url):
+    """แปลง Google Sheets URL → export XLSX URL"""
+    m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url)
+    if not m:
+        return None
+    sheet_id = m.group(1)
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+
+def fetch_gsheet(url):
+    """ดาวน์โหลด Google Sheet เป็น bytes แล้ว parse"""
+    export_url = gsheet_to_export_url(url)
+    if not export_url:
+        raise ValueError("URL ไม่ถูกต้อง — ต้องเป็น Google Sheets link")
+    req = urllib.request.Request(export_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read()
+
 # ─── Session state ────────────────────────────────────────────
 if "data" not in st.session_state:
     st.session_state.data = dict(DEFAULT)
@@ -319,16 +339,45 @@ with st.sidebar:
     ], label_visibility="collapsed")
 
     st.divider()
-    uploaded = st.file_uploader("📂 อัพโหลด Excel", type=["xlsx","xls"], label_visibility="collapsed")
-    if uploaded:
-        with st.spinner("กำลังอ่านไฟล์..."):
-            try:
-                st.session_state.data = parse_excel(uploaded.read())
-                st.success(f"โหลดสำเร็จ: {uploaded.name}")
-            except Exception as e:
-                st.error(f"อ่านไม่ได้: {e}")
+    st.markdown("**📥 แหล่งข้อมูล**")
+    src = st.radio("src", ["📊 Google Sheets", "📁 อัพโหลด Excel"],
+                   label_visibility="collapsed")
 
-    st.caption(f"ข้อมูล: {st.session_state.data.get('total',0):,} แห่ง")
+    if src == "📊 Google Sheets":
+        gs_url = st.text_input(
+            "Google Sheets URL",
+            value="https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit",
+            label_visibility="collapsed",
+            placeholder="วาง URL Google Sheets ที่นี่"
+        )
+        if st.button("🔄 โหลดจาก Google Sheets", use_container_width=True):
+            with st.spinner("กำลังดาวน์โหลด..."):
+                try:
+                    file_bytes = fetch_gsheet(gs_url)
+                    st.session_state.data = parse_excel(file_bytes)
+                    st.session_state["data_source"] = "Google Sheets"
+                    st.success("โหลดสำเร็จ ✅")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"โหลดไม่ได้: {e}")
+                    st.caption("💡 ตรวจสอบว่า Sheet เปิดเป็น Public (Anyone with link can view)")
+    else:
+        uploaded = st.file_uploader("📂 อัพโหลด Excel", type=["xlsx","xls"],
+                                    label_visibility="collapsed")
+        if uploaded:
+            with st.spinner("กำลังอ่านไฟล์..."):
+                try:
+                    st.session_state.data = parse_excel(uploaded.read())
+                    st.session_state["data_source"] = uploaded.name
+                    st.success(f"โหลดสำเร็จ ✅")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"อ่านไม่ได้: {e}")
+
+    st.divider()
+    src_label = st.session_state.get("data_source", "Default Data")
+    st.caption(f"📌 {src_label}")
+    st.caption(f"รพ.สต. {st.session_state.data.get('total',0):,} แห่ง")
 
 D = st.session_state.data
 COLORS = ['#2563eb','#10b981','#f59e0b','#7c3aed','#06b6d4','#ef4444','#f97316','#84cc16']
