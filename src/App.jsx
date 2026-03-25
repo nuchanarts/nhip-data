@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import installDataRaw from './data/installData.json'
 import Sidebar from './components/Sidebar'
@@ -173,19 +173,53 @@ const PAGES = {
   installer:  InstallerMgmt,
 }
 
+function getGSheetExportUrl(url) {
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  if (!m) return null
+  return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=xlsx`
+}
+
 export default function App() {
   const [data, setData] = useState(DEFAULT_DATA)
   const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
   const [page, setPage] = useState('overview')
   const [dragging, setDragging] = useState(false)
+  const [showGS, setShowGS] = useState(false)
+  const [gsUrl, setGsUrl] = useState('https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit?usp=sharing')
+  const [gsError, setGsError] = useState('')
   const fileRef = useRef()
+  const gsInputRef = useRef()
 
   const handleFile = useCallback(async (file) => {
     if (!file) return
-    setLoading(true)
+    setLoading(true); setLoadingMsg(`กำลังอ่าน ${file.name}...`)
     try { setData(await parseExcel(file)) }
     catch { alert('ไม่สามารถอ่านไฟล์ได้') }
-    finally { setLoading(false) }
+    finally { setLoading(false); setLoadingMsg('') }
+  }, [])
+
+  const handleGSheet = useCallback(async () => {
+    const exportUrl = getGSheetExportUrl(gsUrl)
+    if (!exportUrl) { setGsError('URL ไม่ถูกต้อง'); return }
+    setGsError(''); setLoading(true); setLoadingMsg('กำลังโหลดจาก Google Sheets...')
+    try {
+      const res = await fetch(exportUrl)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const file = new File([blob], 'GoogleSheet.xlsx', { type: blob.type })
+      setData(await parseExcel(file))
+      setShowGS(false)
+    } catch(e) {
+      setGsError('โหลดไม่ได้ — ตรวจสอบว่า Sheet เปิดเป็น Public')
+    } finally { setLoading(false); setLoadingMsg('') }
+  }, [gsUrl])
+
+  // ปิด popup เมื่อกด Escape
+  useEffect(() => {
+    const handler = e => { if (e.key === 'Escape') setShowGS(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   const PageComponent = PAGES[page] || Overview
@@ -202,6 +236,48 @@ export default function App() {
             </div>
           </div>
           <div className="header-right">
+
+            {/* ── Google Sheets button ── */}
+            <div style={{position:'relative'}}>
+              <button
+                className="gs-btn"
+                onClick={() => { setShowGS(v => !v); setGsError('') }}
+                title="โหลดจาก Google Sheets"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                Google Sheets
+              </button>
+
+              {showGS && (
+                <div className="gs-popup">
+                  <div className="gs-popup-title">🔗 โหลดจาก Google Sheets</div>
+                  <input
+                    ref={gsInputRef}
+                    className="gs-input"
+                    value={gsUrl}
+                    onChange={e => setGsUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    autoFocus
+                  />
+                  {gsError && <div className="gs-error">{gsError}</div>}
+                  <div className="gs-hint">⚠️ Sheet ต้องเปิด Public (Anyone with link)</div>
+                  <div style={{display:'flex',gap:8,marginTop:10}}>
+                    <button className="gs-load-btn" onClick={handleGSheet} disabled={loading}>
+                      {loading ? '⏳ กำลังโหลด...' : '🔄 โหลดข้อมูล'}
+                    </button>
+                    <button className="gs-cancel-btn" onClick={() => setShowGS(false)}>ยกเลิก</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Upload Excel ── */}
             <div
               className={`upload-inline${dragging?' dragging':''}`}
               onDragOver={e=>{e.preventDefault();setDragging(true)}}
@@ -210,8 +286,9 @@ export default function App() {
               onClick={()=>fileRef.current.click()}
             >
               <span>📂</span>
-              <span>{loading ? 'กำลังโหลด...' : data.filename}</span>
+              <span>{loading ? loadingMsg : data.filename}</span>
             </div>
+
             <span className="header-date">{new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</span>
             <span className="header-badge">โครงการ NHIP</span>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={e=>handleFile(e.target.files[0])} />

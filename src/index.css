@@ -390,6 +390,53 @@ body {
 .header-title p { font-size: 11px; color: rgba(255,255,255,0.65); margin-top: 1px; }
 .header-right { display: flex; gap: 10px; align-items: center; }
 
+/* ── Google Sheets button ── */
+.gs-btn {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 8px; padding: 6px 14px;
+  cursor: pointer; font-size: 12px; color: rgba(255,255,255,0.9);
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.gs-btn:hover { background: rgba(255,255,255,0.22); }
+
+/* ── Google Sheets popup ── */
+.gs-popup {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 999;
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  border: 1px solid #e2e8f0;
+  padding: 16px; width: 400px;
+}
+.gs-popup-title {
+  font-weight: 700; font-size: 14px; color: #1e293b; margin-bottom: 10px;
+}
+.gs-input {
+  width: 100%; padding: 9px 12px;
+  border: 1.5px solid #e2e8f0; border-radius: 8px;
+  font-size: 12px; color: #1e293b; outline: none;
+  transition: border 0.15s;
+}
+.gs-input:focus { border-color: #2563eb; }
+.gs-error { color: #ef4444; font-size: 11px; margin-top: 5px; }
+.gs-hint { color: #94a3b8; font-size: 11px; margin-top: 5px; }
+.gs-load-btn {
+  flex: 1; padding: 8px; border-radius: 7px;
+  background: #2563eb; color: #fff; border: none;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s;
+}
+.gs-load-btn:hover:not(:disabled) { background: #1d4ed8; }
+.gs-load-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.gs-cancel-btn {
+  padding: 8px 14px; border-radius: 7px;
+  background: #f1f5f9; color: #64748b;
+  border: 1px solid #e2e8f0; font-size: 12px; cursor: pointer;
+}
+.gs-cancel-btn:hover { background: #e2e8f0; }
+
 .upload-inline {
   display: flex; align-items: center; gap: 8px;
   background: rgba(255,255,255,0.12);
