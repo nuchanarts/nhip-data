@@ -1,0 +1,4 @@
+# Disable all CI/CD pipelines - deploying via Netlify instead
+workflow:
+  rules:
+    - when: never
