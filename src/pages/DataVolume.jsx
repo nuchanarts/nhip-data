@@ -54,6 +54,7 @@ export default function DataVolume({ data }) {
   const [search, setSearch] = useState('')
   const [filterRegion, setFilterRegion] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterSummary, setFilterSummary] = useState('')
   const [page, setPage] = useState(1)
 
   const totalDone = Object.values(regionDone||{}).reduce((a,r)=>a+(r.done||0),0)
@@ -78,13 +79,15 @@ export default function DataVolume({ data }) {
     const matchSearch = !search || r.name.includes(search) || r.hospcode.includes(search) || r.province.includes(search)
     const matchRegion = !filterRegion || String(r.region) === filterRegion
     const matchStatus = !filterStatus || r.status === filterStatus
-    return matchSearch && matchRegion && matchStatus
+    const matchSummary = !filterSummary || (r.summary||'').toLowerCase().includes(filterSummary.toLowerCase())
+    return matchSearch && matchRegion && matchStatus && matchSummary
   })
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const pageData   = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
   const uniqueRegions = [...new Set((installList||[]).map(r=>r.region).filter(Boolean))].sort((a,b)=>a-b)
   const uniqueStatuses = [...new Set((installList||[]).map(r=>r.status).filter(Boolean))]
+  const SUMMARY_OPTIONS = ['รอติดตั้ง','ยังไม่ทำรายงานติดตั้ง','ส่งกลับแก้ไขรายงานติดตั้ง','ทำรายงานติดตั้งแล้ว']
 
   // Province status map from installList
   const provinceStatMap = {}
@@ -321,14 +324,18 @@ export default function DataVolume({ data }) {
             <option value="">ทุกสถานะ</option>
             {uniqueStatuses.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
+          <select className="filter-select" value={filterSummary} onChange={e=>{setFilterSummary(e.target.value);setPage(1)}}>
+            <option value="">ทุกสรุปรายงาน</option>
+            {SUMMARY_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
           <span style={{fontSize:12,color:'var(--text-muted)',alignSelf:'center'}}>
-            แสดง {filtered.length} รายการ
+            แสดง {fmt(filtered.length)} รายการ
           </span>
         </div>
 
         {/* Table */}
         <div style={{overflowX:'auto'}}>
-          <div style={{minWidth:1400}}>
+          <div style={{minWidth:2000}}>
             {/* Header */}
             <div className="lb-header">
               <span style={{width:36,flexShrink:0}}>#</span>
@@ -347,6 +354,9 @@ export default function DataVolume({ data }) {
               <span style={{width:100,flexShrink:0,textAlign:'center'}}>สถานะใช้งาน</span>
               <span style={{width:80,flexShrink:0}}>ผู้รับผิดชอบ</span>
               <span style={{width:60,flexShrink:0}}>PM</span>
+              <span style={{width:180,flexShrink:0}}>สรุปรายงานติดตั้ง</span>
+              <span style={{width:90,flexShrink:0,textAlign:'center'}}>วันที่ตรวจสอบ</span>
+              <span style={{width:220,flexShrink:0}}>หมายเหตุ</span>
             </div>
 
             {filtered.length === 0 && (
@@ -394,6 +404,17 @@ export default function DataVolume({ data }) {
                 </span>
                 <span style={{width:80,flexShrink:0,color:'var(--text-secondary)',paddingTop:2}}>{r.responsible||'—'}</span>
                 <span style={{width:60,flexShrink:0,color:'var(--text-muted)',paddingTop:2,fontSize:11}}>{r.pm||'—'}</span>
+                <span style={{width:180,flexShrink:0,paddingTop:2,lineHeight:1.4}}>
+                  {r.summary
+                    ? <span style={{
+                        background: r.summary==='ทำรายงานติดตั้งแล้ว'?'#dcfce7':r.summary==='รอติดตั้ง'?'#fef3c7':r.summary==='ส่งกลับแก้ไขรายงานติดตั้ง'?'#ede9fe':'#fee2e2',
+                        color: r.summary==='ทำรายงานติดตั้งแล้ว'?'#15803d':r.summary==='รอติดตั้ง'?'#b45309':r.summary==='ส่งกลับแก้ไขรายงานติดตั้ง'?'#6d28d9':'#b91c1c',
+                        padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:600
+                      }}>{r.summary}</span>
+                    : <span style={{color:'#cbd5e1'}}>—</span>}
+                </span>
+                <span style={{width:90,flexShrink:0,textAlign:'center',color:'var(--text-secondary)',paddingTop:2,fontSize:11}}>{r.check_date||'—'}</span>
+                <span style={{width:220,flexShrink:0,paddingTop:2,fontSize:11,color:'var(--text-secondary)',lineHeight:1.4}}>{r.remark||'—'}</span>
               </div>
             ))}
           </div>

@@ -9,8 +9,24 @@ const TT = ({ active, payload, label }) => active && payload?.length ? (
 
 const fmt = n => Number(n).toLocaleString()
 
+const SUMMARY_STATUSES = [
+  { key: 'ทำรายงานติดตั้งแล้ว',         color: '#10b981', bg: '#dcfce7', icon: '✅' },
+  { key: 'รอติดตั้ง',                   color: '#f59e0b', bg: '#fef3c7', icon: '⏳' },
+  { key: 'ยังไม่ทำรายงานติดตั้ง',       color: '#ef4444', bg: '#fee2e2', icon: '🕐' },
+  { key: 'ส่งกลับแก้ไขรายงานติดตั้ง',  color: '#7c3aed', bg: '#ede9fe', icon: '🔄' },
+]
+
 export default function Overview({ data }) {
-  const { job_status, progress, regions, monthly, standby_status, defect_status, total } = data
+  const { job_status, progress, regions, monthly, standby_status, defect_status, defect_urgency, total, installList } = data
+
+  // นับ สรุปรายงานติดตั้ง จาก installList
+  const summaryCnt = {}
+  SUMMARY_STATUSES.forEach(s => { summaryCnt[s.key] = 0 })
+  ;(installList||[]).forEach(r => {
+    const s = (r.summary||'').trim()
+    if (s && summaryCnt[s] !== undefined) summaryCnt[s]++
+  })
+  const summaryTotal = Object.values(summaryCnt).reduce((a,b)=>a+b,0) || 1
 
   const totalJS = Object.values(job_status).reduce((a,b)=>a+b,0) || 1
   const installed = (job_status['ใช้งานระบบ']||0)+(job_status['ใช้งานคู่ขนาน']||0)
@@ -36,6 +52,9 @@ export default function Overview({ data }) {
     return {name:`${mn[+mo]} ${+yr+543}`,value:v}
   })
 
+  const reportDone = summaryCnt['ทำรายงานติดตั้งแล้ว']
+  const reportPct  = ((reportDone / (done || 1)) * 100).toFixed(1)
+
   const heroCards = [
     {
       icon: '🚀', label: 'ขึ้นระบบแพลตฟอร์มกลางไปได้เท่าไหร่?',
@@ -48,24 +67,14 @@ export default function Overview({ data }) {
       tag: 'Installation Progress'
     },
     {
-      icon: '⚠️', label: 'พบปัญหาอะไรบ้าง?',
-      pct: `${fmt(defectTotal)} รายการ`, pctColor: '#d97706',
-      grad: 'linear-gradient(135deg,#78350f,#f59e0b)',
-      bg: 'linear-gradient(135deg,#fffbeb,#fef3c7)',
-      border: '#fde68a',
-      detail: `ด่วน ${fmt(data.defect_urgency?.['ด่วน']||42)} · ปกติ ${fmt(data.defect_urgency?.['ปกติ']||106)} รายการ`,
-      barColor: '#f59e0b', barPct: (data.defect_urgency?.['ด่วน']||42) / ((data.defect_urgency?.['ด่วน']||42)+(data.defect_urgency?.['ปกติ']||106)) * 100,
-      tag: 'Defect & Request'
-    },
-    {
-      icon: '🔧', label: 'พัฒนาระบบ — แก้ไขปัญหาได้แล้วกี่ %?',
-      pct: `${defectDonePct}%`, pctColor: '#2563eb',
-      grad: 'linear-gradient(135deg,#1e3a8a,#2563eb)',
-      bg: 'linear-gradient(135deg,#eff6ff,#dbeafe)',
-      border: '#bfdbfe',
-      detail: `แก้ไขแล้ว ${fmt(defectDone)} · คงค้าง ${fmt(defectTotal-defectDone)} รายการ`,
-      barColor: '#2563eb', barPct: +defectDonePct,
-      tag: 'พัฒนาระบบ'
+      icon: '📄', label: 'ทำรายงานติดตั้งไปแล้วเท่าไหร่?',
+      pct: `${reportPct}%`, pctColor: '#0ea5e9',
+      grad: 'linear-gradient(135deg,#0c4a6e,#0ea5e9)',
+      bg: 'linear-gradient(135deg,#f0f9ff,#e0f2fe)',
+      border: '#bae6fd',
+      detail: `ทำรายงานแล้ว ${fmt(reportDone)} จาก ${fmt(done)} แห่งที่ติดตั้งแล้ว`,
+      barColor: '#0ea5e9', barPct: +reportPct,
+      tag: 'Installation Report'
     },
     {
       icon: '💬', label: 'ตอบคำถาม Stand-by ได้กี่ %?',
@@ -76,6 +85,16 @@ export default function Overview({ data }) {
       detail: `ดำเนินการแล้ว ${fmt(stdbyDone)} จาก ${fmt(stdbyTotal)} ครั้ง`,
       barColor: '#7c3aed', barPct: +stdbyPct,
       tag: 'Support SLA'
+    },
+    {
+      icon: '🐞', label: 'แก้ไข Defect & Request ได้กี่ %?',
+      pct: `${defectDonePct}%`, pctColor: '#ef4444',
+      grad: 'linear-gradient(135deg,#7f1d1d,#ef4444)',
+      bg: 'linear-gradient(135deg,#fff5f5,#fee2e2)',
+      border: '#fecaca',
+      detail: `แก้ไขแล้ว ${fmt(defectDone)} จาก ${fmt(defectTotal)} รายการ · ด่วน ${fmt(defect_urgency?.['ด่วน']||0)}`,
+      barColor: '#ef4444', barPct: +defectDonePct,
+      tag: 'Defect & Request'
     },
   ]
 
@@ -97,6 +116,35 @@ export default function Overview({ data }) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* สรุปรายงานติดตั้ง */}
+      <div className="section-label" style={{marginTop:24}}>📄 สรุปรายงานติดตั้ง</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:8}}>
+        {SUMMARY_STATUSES.map((s,i) => {
+          const cnt = summaryCnt[s.key]
+          const pct = ((cnt/totalJS)*100).toFixed(1)
+          return (
+            <div key={i} style={{
+              background:s.bg, border:`1px solid ${s.color}44`,
+              borderRadius:14, padding:'16px 20px',
+              display:'flex',flexDirection:'column',gap:6
+            }}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:18}}>{s.icon}</span>
+                  <span style={{fontSize:11,fontWeight:600,color:s.color,lineHeight:1.3}}>{s.key}</span>
+                </div>
+                <span style={{fontSize:22,fontWeight:800,color:s.color}}>{pct}%</span>
+              </div>
+              <div style={{fontSize:26,fontWeight:800,color:s.color,lineHeight:1}}>{fmt(cnt)}</div>
+              <div style={{fontSize:11,color:'#64748b'}}>จาก {fmt(totalJS)} แห่ง</div>
+              <div style={{height:5,background:`${s.color}22`,borderRadius:4}}>
+                <div style={{width:`${Math.min(+pct,100)}%`,height:'100%',background:s.color,borderRadius:4}}/>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* KPI */}

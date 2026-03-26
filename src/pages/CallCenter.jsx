@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 
 const fmt = n => Number(n).toLocaleString()
@@ -6,9 +8,36 @@ const TT = ({ active, payload, label }) => active && payload?.length ? (
     {payload.map((p,i)=><div key={i} className="tt-value" style={{color:p.color||'var(--text-primary)'}}>{p.name?`${p.name}: `:''}{Number(p.value).toLocaleString()}</div>)}
   </div>) : null
 
-// Call Center data from sheet 7 (standby) - ประเภทปัญหา
+const STATUS_COLOR = {'ดำเนินการแล้ว':'#10b981','กำลังดำเนินการ':'#f59e0b','รอดำเนินการ':'#ef4444','ไม่ดำเนินการ':'#94a3b8'}
+const PAGE_SIZE = 20
+
 export default function CallCenter({ data }) {
-  const { standby_type, standby_status, defect_status, defect_urgency } = data
+  const { standby_type, standby_status, defect_status, defect_urgency, callList } = data
+  const [search, setSearch]             = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterType, setFilterType]     = useState('')
+  const [page, setPage]                 = useState(1)
+
+  const exportExcel = (filtered) => {
+    const rows = filtered.map((r,i) => ({
+      'ลำดับ': i+1,
+      'วันที่': r.date||'',
+      'จังหวัด': r.province||'',
+      'รพ.สต.': r.hospital||'',
+      'สถานะ': r.status||'',
+      'ประเภท': r.type||'',
+      'ผู้รับแจ้ง': r.receiver||'',
+      'ผู้ดำเนินการ': r.operator||'',
+      'หัวข้อ/รายละเอียด': r.detail||'',
+      'แนวทางแก้ไข': r.solution||'',
+      'ระยะเวลา(ชม.)': r.dur_hr||'',
+      'ระยะเวลา(นาที)': r.dur_min||'',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb2 = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb2, ws, 'CallCenter')
+    XLSX.writeFile(wb2, `CallCenter_${new Date().toLocaleDateString('th-TH').replace(/\//g,'-')}.xlsx`)
+  }
 
   const st = standby_type || {}
   const ss = standby_status || {}
@@ -149,6 +178,105 @@ export default function CallCenter({ data }) {
           </div>
         </div>
       </div>
+
+      {/* Detail Table */}
+      {(() => {
+        const list = callList || []
+        const uniqueStatuses = [...new Set(list.map(r=>r.status).filter(Boolean))]
+        const uniqueTypes    = [...new Set(list.map(r=>r.type).filter(Boolean))]
+        const filtered = list.filter(r => {
+          if (filterStatus && r.status !== filterStatus) return false
+          if (filterType   && r.type   !== filterType)   return false
+          if (search.trim()) {
+            const q = search.toLowerCase()
+            return (r.hospital||'').toLowerCase().includes(q)
+              || (r.province||'').toLowerCase().includes(q)
+              || (r.detail||'').toLowerCase().includes(q)
+              || (r.solution||'').toLowerCase().includes(q)
+              || (r.operator||'').toLowerCase().includes(q)
+              || (r.receiver||'').toLowerCase().includes(q)
+          }
+          return true
+        })
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+        const paged = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
+        return (
+          <>
+            <div className="section-label" style={{marginTop:24}}>📋 รายการ Ticket ทั้งหมด</div>
+            <div className="chart-card">
+              {/* Filters */}
+              <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+                <input className="filter-input" placeholder="🔍 ค้นหา รพ.สต. / จังหวัด / รายละเอียด / ผู้ดำเนินการ..."
+                  value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} style={{width:300}}/>
+                <select className="filter-select" value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(1)}}>
+                  <option value="">ทุกสถานะ</option>
+                  {uniqueStatuses.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                <select className="filter-select" value={filterType} onChange={e=>{setFilterType(e.target.value);setPage(1)}}>
+                  <option value="">ทุกประเภท</option>
+                  {uniqueTypes.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+                <span style={{fontSize:12,color:'var(--text-muted)'}}>{fmt(filtered.length)} รายการ</span>
+                <button onClick={()=>exportExcel(filtered)} style={{marginLeft:'auto',padding:'6px 14px',background:'#10b981',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  📥 Export Excel ({fmt(filtered.length)})
+                </button>
+              </div>
+
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead>
+                    <tr style={{background:'var(--bg-secondary)',borderBottom:'2px solid var(--border)'}}>
+                      {['#','วันที่','จังหวัด','รพ.สต.','สถานะ','ประเภท','ผู้รับแจ้ง','ผู้ดำเนินการ','หัวข้อ/รายละเอียด','แนวทางแก้ไข','ชม.','นาที'].map(h=>(
+                        <th key={h} style={{padding:'8px 10px',textAlign:'left',fontWeight:600,
+                          color:'var(--text-secondary)',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paged.length===0 && (
+                      <tr><td colSpan={12} style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>ไม่พบข้อมูล</td></tr>
+                    )}
+                    {paged.map((r,i)=>(
+                      <tr key={i} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'var(--bg-secondary)'}}>
+                        <td style={{padding:'6px 10px',color:'var(--text-muted)',fontSize:11}}>{(page-1)*PAGE_SIZE+i+1}</td>
+                        <td style={{padding:'6px 10px',whiteSpace:'nowrap',color:'var(--text-secondary)',fontWeight:500}}>{r.date||'—'}</td>
+                        <td style={{padding:'6px 10px',color:'var(--text-secondary)',whiteSpace:'nowrap'}}>{r.province||'—'}</td>
+                        <td style={{padding:'6px 10px',fontWeight:500,color:'var(--text-primary)',maxWidth:160}}>{r.hospital||'—'}</td>
+                        <td style={{padding:'6px 10px',textAlign:'center'}}>
+                          {r.status ? <span style={{
+                            background:(STATUS_COLOR[r.status]||'#94a3b8')+'22',
+                            color:STATUS_COLOR[r.status]||'#94a3b8',
+                            padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,whiteSpace:'nowrap'
+                          }}>{r.status}</span> : '—'}
+                        </td>
+                        <td style={{padding:'6px 10px',color:'#2563eb',fontWeight:500,whiteSpace:'nowrap',fontSize:11}}>{r.type||'—'}</td>
+                        <td style={{padding:'6px 10px',color:'var(--text-secondary)',whiteSpace:'nowrap'}}>{r.receiver||'—'}</td>
+                        <td style={{padding:'6px 10px',fontWeight:500,color:'var(--text-secondary)',whiteSpace:'nowrap'}}>{r.operator||'—'}</td>
+                        <td style={{padding:'6px 10px',color:'var(--text-primary)',maxWidth:220,lineHeight:1.4}}>{r.detail||'—'}</td>
+                        <td style={{padding:'6px 10px',color:'var(--text-secondary)',maxWidth:200,lineHeight:1.4}}>{r.solution||'—'}</td>
+                        <td style={{padding:'6px 10px',textAlign:'center',fontWeight:700,color:'#0ea5e9'}}>{r.dur_hr||'—'}</td>
+                        <td style={{padding:'6px 10px',textAlign:'center',fontWeight:700,color:'#06b6d4'}}>{r.dur_min||'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:14}}>
+                  <button className="page-btn" onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}>←</button>
+                  {Array.from({length:Math.min(totalPages,7)},(_,i)=>{
+                    const p=totalPages<=7?i+1:page<=4?i+1:page+i-3>totalPages?totalPages-6+i:page+i-3
+                    return p>=1&&p<=totalPages?(<button key={p} className={`page-btn${page===p?' active':''}`} onClick={()=>setPage(p)}>{p}</button>):null
+                  })}
+                  <button className="page-btn" onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}>→</button>
+                  <span style={{fontSize:11,color:'var(--text-muted)'}}>หน้า {page}/{totalPages}</span>
+                </div>
+              )}
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }

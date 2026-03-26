@@ -19,9 +19,11 @@ export const DEFAULT_DATA = {
   progress: { "ยังไม่ติดตั้ง":2399,"ดำเนินการแล้ว":2087,"อยู่ในระหว่างดำเนินการ":21 },
   regions: {"1":254,"2":431,"3":262,"4":616,"5":416,"6":380,"7":105,"8":409,"9":696,"10":432,"11":198,"12":310},
   monthly: {"2025-10":169,"2025-11":141,"2025-12":234,"2026-01":242,"2026-02":595,"2026-03":619},
+  callList: [],
   standby_type: {"การใช้งาน":1907,"ส่งออกข้อมูล":666,"ติดตั้งระบบ":368,"ข้อมูลพื้นฐาน":343,"Defect/BUG":65,"แบบฟอร์ม":32,"Requirement":19},
   standby_status: {"ดำเนินการแล้ว":3276,"กำลังดำเนินการ":80,"รอดำเนินการ":79,"ไม่ดำเนินการ":1},
   defect_status: {"จัดทำ MANTIS":54,"รอแจ้งทีมพัฒนา":35,"แก้ไขเรียบร้อย":28,"รอทีมพัฒนา":14,"ยกเลิก":8,"รอ compile":4,"ส่งกลับนักพัฒนา":2},
+  defectList: [],
   defect_system: {"one stop service (สั่งยา)":13,"ภาพรวมระบบ":13,"การตั้งค่าระบบ":9,"บัญชี 1":8,"ส่งออกข้อมูล":7,"one stop service (คัดกรอง)":7,"one stop service (หัตถการ)":6,"one stop service (งานส่งเสริม)":6},
   defect_urgency: {"ด่วน":42,"ปกติ":106},
   installers: [
@@ -55,6 +57,7 @@ function parseExcel(file) {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true })
         const result = { ...DEFAULT_DATA, filename: file.name }
+        console.log('📋 Sheets:', wb.SheetNames)
 
         // Sheet 5: ข้อมูลผู้ติดตั้ง
         const s5 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[5]], { header:1, defval:null })
@@ -80,7 +83,7 @@ function parseExcel(file) {
             const k=`${yr}-${String(dt.getMonth()+1).padStart(2,'0')}`
             mo[k]=(mo[k]||0)+1
           }
-          if(installList.length < 500) installList.push({
+          installList.push({
             hospcode:   String(r[0]||''),
             region,
             name:       String(r[2]||''),
@@ -94,10 +97,11 @@ function parseExcel(file) {
             progress:   p,
             status:     j,
             finish_date:r[12] instanceof Date ? r[12].toLocaleDateString('th-TH') : '',
-            responsible:String(r[13]||''),
-            summary:    String(r[14]||''),
-            remark:     String(r[15]||''),
-            pm:         String(r[16]||''),
+            responsible: String(r[13]||''),
+            summary:     String(r[14]||''),
+            check_date:  r[15] instanceof Date ? r[15].toLocaleDateString('th-TH') : String(r[15]||''),
+            remark:      String(r[16]||''),
+            pm:          String(r[17]||''),
           })
         }
         result.job_status=js; result.progress=pg
@@ -109,37 +113,126 @@ function parseExcel(file) {
         result.provinceCnt=Object.fromEntries(Object.entries(provinceCnt).sort((a,b)=>b[1]-a[1]).slice(0,15))
         result.installList=installList
 
-        // Sheet 7: Standby
-        const s7=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[7]],{header:1,defval:null})
-        const st={},ss={}
-        for(let i=1;i<s7.length;i++){
-          const r=s7[i]; if(!r[1]) continue
-          const t=String(r[5]||''), s=String(r[4]||'')
+        // Sheet: ถาม-ตอบ Stand By — ค้นหาตามชื่อ sheet ก่อน ถ้าไม่เจอใช้ index 7
+        const standbySheetName = wb.SheetNames.find(n=>n.includes('ถาม-ตอบ')||n.includes('Stand By')||n.includes('Standby')||n.includes('standby')) || wb.SheetNames[7]
+        const s7=XLSX.utils.sheet_to_json(wb.Sheets[standbySheetName],{header:1,defval:null})
+        console.log('📋 Standby sheet:', standbySheetName, '| headers:', s7[0])
+
+        // map header → index
+        const h7 = (s7[0]||[]).map(h=>String(h||'').trim())
+        const ci = key => {
+          const patterns = {
+            date:     ['วันที่'],
+            province: ['จังหวัด'],
+            hospital: ['รพ.สต','โรงพยาบาล','หน่วยบริการ'],
+            status:   ['สถานะ'],
+            type:     ['ประเภท'],
+            receiver: ['ผู้รับแจ้ง'],
+            operator: ['ผู้ดำเนินการ'],
+            detail:   ['หัวข้อ','รายละเอียด'],
+            solution: ['แนวทาง','วิธีแก้'],
+            dur_hr:   ['ชั่วโมง','ชม'],
+            dur_min:  ['นาที'],
+          }
+          const pats = patterns[key] || [key]
+          const idx = h7.findIndex(h => pats.some(p => h.includes(p)))
+          return idx >= 0 ? idx : null
+        }
+        // fallback index ถ้าหา header ไม่เจอ
+        const fb = { date:0, province:1, hospital:2, status:4, type:5, receiver:6, operator:7, detail:8, solution:9, dur_hr:10, dur_min:11 }
+        const col = key => ci(key) ?? fb[key]
+
+        const fmtDate = v => v instanceof Date ? v.toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : String(v||'')
+
+        const st={},ss={},callList=[]
+        const dataStart7 = h7.length > 0 ? 1 : 0
+        for(let i=dataStart7;i<s7.length;i++){
+          const r=s7[i]
+          const province = String(r[col('province')]||'')
+          if(!province || province==='null') continue
+          const t=String(r[col('type')]||''), s=String(r[col('status')]||'')
           if(t&&t!=='null') st[t]=(st[t]||0)+1
           if(s&&s!=='null') ss[s]=(ss[s]||0)+1
+          callList.push({
+            date:     fmtDate(r[col('date')]),
+            province,
+            hospital: String(r[col('hospital')]||''),
+            status:   s,
+            type:     t,
+            receiver: String(r[col('receiver')]||''),
+            operator: String(r[col('operator')]||''),
+            detail:   String(r[col('detail')]||''),
+            solution: String(r[col('solution')]||''),
+            dur_hr:   r[col('dur_hr')]!=null ? String(r[col('dur_hr')]) : '',
+            dur_min:  r[col('dur_min')]!=null ? String(r[col('dur_min')]) : '',
+          })
         }
         result.standby_type=Object.fromEntries(Object.entries(st).filter(([k])=>k!=='null').sort((a,b)=>b[1]-a[1]).slice(0,8))
         result.standby_status=Object.fromEntries(Object.entries(ss).filter(([k])=>k!=='null'))
+        result.callList=callList
 
-        // Sheet 8: Defect
-        const s8=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[8]],{header:1,defval:null})
-        const ds={},dsys={},du={}
-        for(let i=2;i<s8.length;i++){
-          const r=s8[i]; if(!r[0]) continue
-          const s=String(r[4]||''), sys=String(r[1]||''), u=String(r[3]||'')
+        // Sheet: Defect — ค้นหาตามชื่อก่อน ถ้าไม่เจอใช้ index 8
+        const defectSheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('defect')||n.includes('บั๊ก')||n.includes('Bug')) || wb.SheetNames[8]
+        const s8=XLSX.utils.sheet_to_json(wb.Sheets[defectSheetName],{header:1,defval:null})
+        console.log('📋 Defect sheet:', defectSheetName, '| headers row0:', s8[0], '| row1:', s8[1])
+
+        // dynamic column mapping for defect sheet
+        // หา header row (แถวแรกที่มีหัวคอลัมน์)
+        const defectHeaderRowIdx = s8.findIndex(row => row && row.some(c => String(c||'').includes('วันที่') || String(c||'').toLowerCase().includes('defect') || String(c||'').includes('ระบบ') || String(c||'').includes('สถานะ')))
+        const defectHeaderRow = defectHeaderRowIdx >= 0 ? s8[defectHeaderRowIdx] : []
+        const hd = defectHeaderRow.map(h=>String(h||'').trim())
+        const cid = key => {
+          const patterns = {
+            date:        ['วันที่'],
+            system:      ['ระบบงาน','ระบบ','Module','module'],
+            sys_status:  ['สถานะระบบ','สถานะการใช้งาน'],
+            urgency:     ['ด่วน','ความเร่งด่วน','urgency','Urgency','Priority'],
+            status:      ['สถานะดำเนินการ','สถานะ'],
+            detail:      ['หัวข้อ','รายละเอียด','detail','Detail','ปัญหา'],
+            mantis:      ['mantis','Mantis','MANTIS','Taiga','taiga','Issue No','issue'],
+            responsible: ['ผู้รับผิดชอบ','ผู้ดำเนินการ','ผู้แก้ไข'],
+          }
+          const pats = patterns[key] || [key]
+          const idx = hd.findIndex(h => pats.some(p => h.toLowerCase().includes(p.toLowerCase())))
+          return idx >= 0 ? idx : null
+        }
+        // fallback indices (ถ้า header ไม่เจอ)
+        const fbd = { date:0, system:1, sys_status:2, urgency:3, status:4, detail:5, mantis:6, responsible:7 }
+        const cold = key => cid(key) ?? fbd[key]
+        console.log('📋 Defect col mapping:', Object.keys(fbd).map(k=>`${k}→${cold(k)}`).join(', '))
+
+        const ds={},dsys={},du={},defectList=[]
+        const defectDataStart = defectHeaderRowIdx >= 0 ? defectHeaderRowIdx + 1 : 2
+        for(let i=defectDataStart;i<s8.length;i++){
+          const r=s8[i]; if(!r || r.every(c=>!c)) continue
+          const s=String(r[cold('status')]||''), sys=String(r[cold('system')]||''), u=String(r[cold('urgency')]||'')
           if(s&&s!=='null') ds[s]=(ds[s]||0)+1
           if(sys&&sys!=='null') dsys[sys]=(dsys[sys]||0)+1
           if(u&&u!=='null') du[u]=(du[u]||0)+1
+          const dateVal = r[cold('date')]
+          defectList.push({
+            date:        dateVal instanceof Date ? dateVal.toLocaleDateString('th-TH') : String(dateVal||''),
+            system:      String(r[cold('system')]||''),
+            sys_status:  String(r[cold('sys_status')]||''),
+            urgency:     u,
+            status:      s,
+            detail:      String(r[cold('detail')]||''),
+            mantis:      String(r[cold('mantis')]||''),
+            responsible: String(r[cold('responsible')]||''),
+          })
         }
         result.defect_status=ds; result.defect_urgency=du
         result.defect_system=Object.fromEntries(Object.entries(dsys).filter(([k])=>k!=='null').sort((a,b)=>b[1]-a[1]).slice(0,10))
+        result.defectList=defectList
 
         // Sheet 3: Installer stats
         const s3=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[3]],{header:1,defval:null})
         const inst=[]
-        for(let i=5;i<s3.length;i++){
-          const r=s3[i]; if(!r[0]||!r[1]) continue
-          inst.push({name:String(r[2]||r[0]),inProgress:Number(r[3]||0),installed:Number(r[4]||0),active:Number(r[5]||0),parallel:Number(r[6]||0),cancelled:Number(r[7]||0),inactive:Number(r[8]||0)})
+        for(let i=1;i<s3.length;i++){
+          const r=s3[i]
+          const name=String(r[2]||r[1]||r[0]||'').trim()
+          if(!name||name==='null'||name==='ชื่อ'||name==='ชื่อเล่น') continue
+          inst.push({name,inProgress:Number(r[3]||0),installed:Number(r[4]||0),active:Number(r[5]||0),parallel:Number(r[6]||0),cancelled:Number(r[7]||0),inactive:Number(r[8]||0)})
         }
         if(inst.length>0) result.installers=inst
 
@@ -176,8 +269,14 @@ const PAGES = {
 function getGSheetExportUrl(url) {
   const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
   if (!m) return null
-  return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=xlsx`
+  // ใช้ Vite proxy (/gsheet) เพื่อแก้ปัญหา CORS ในช่วง dev
+  // production ให้เปลี่ยนกลับเป็น https://docs.google.com/...
+  const isDev = import.meta.env.DEV
+  const base = isDev ? '/gsheet' : 'https://docs.google.com'
+  return `${base}/spreadsheets/d/${m[1]}/export?format=xlsx`
 }
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000 // 5 นาที
 
 export default function App() {
   const [data, setData] = useState(DEFAULT_DATA)
@@ -188,8 +287,13 @@ export default function App() {
   const [showGS, setShowGS] = useState(false)
   const [gsUrl, setGsUrl] = useState('https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit?usp=sharing')
   const [gsError, setGsError] = useState('')
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [lastRefresh, setLastRefresh] = useState(null)
+  const [countdown, setCountdown] = useState(AUTO_REFRESH_MS / 1000)
   const fileRef = useRef()
   const gsInputRef = useRef()
+  const autoRefreshRef = useRef(null)
+  const countdownRef = useRef(null)
 
   const handleFile = useCallback(async (file) => {
     if (!file) return
@@ -199,21 +303,40 @@ export default function App() {
     finally { setLoading(false); setLoadingMsg('') }
   }, [])
 
-  const handleGSheet = useCallback(async () => {
+  const handleGSheet = useCallback(async (silent = false) => {
     const exportUrl = getGSheetExportUrl(gsUrl)
     if (!exportUrl) { setGsError('URL ไม่ถูกต้อง'); return }
-    setGsError(''); setLoading(true); setLoadingMsg('กำลังโหลดจาก Google Sheets...')
+    setGsError('')
+    if (!silent) { setLoading(true); setLoadingMsg('กำลังโหลดจาก Google Sheets...') }
+    else { setLoadingMsg('🔄 Auto refresh...') }
     try {
       const res = await fetch(exportUrl)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const blob = await res.blob()
       const file = new File([blob], 'GoogleSheet.xlsx', { type: blob.type })
       setData(await parseExcel(file))
-      setShowGS(false)
+      setLastRefresh(new Date())
+      setCountdown(AUTO_REFRESH_MS / 1000)
+      if (!silent) setShowGS(false)
     } catch(e) {
-      setGsError('โหลดไม่ได้ — ตรวจสอบว่า Sheet เปิดเป็น Public')
+      if (!silent) setGsError('โหลดไม่ได้ — ตรวจสอบว่า Sheet เปิดเป็น Public')
     } finally { setLoading(false); setLoadingMsg('') }
   }, [gsUrl])
+
+  // Auto-refresh interval
+  useEffect(() => {
+    if (autoRefresh) {
+      autoRefreshRef.current = setInterval(() => handleGSheet(true), AUTO_REFRESH_MS)
+      countdownRef.current = setInterval(() => setCountdown(c => c <= 1 ? AUTO_REFRESH_MS/1000 : c - 1), 1000)
+    } else {
+      clearInterval(autoRefreshRef.current)
+      clearInterval(countdownRef.current)
+    }
+    return () => {
+      clearInterval(autoRefreshRef.current)
+      clearInterval(countdownRef.current)
+    }
+  }, [autoRefresh, handleGSheet])
 
   // ปิด popup เมื่อกด Escape
   useEffect(() => {
@@ -267,8 +390,25 @@ export default function App() {
                   />
                   {gsError && <div className="gs-error">{gsError}</div>}
                   <div className="gs-hint">⚠️ Sheet ต้องเปิด Public (Anyone with link)</div>
+                  {/* Auto-refresh toggle */}
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10,padding:'8px 10px',background:'var(--bg-main)',borderRadius:8,border:'1px solid var(--border)'}}>
+                    <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:13,color:'var(--text-primary)',fontWeight:600}}>
+                      <input type="checkbox" checked={autoRefresh} onChange={e=>setAutoRefresh(e.target.checked)} style={{width:15,height:15,cursor:'pointer'}}/>
+                      🔁 Auto Refresh ทุก 5 นาที
+                    </label>
+                    {autoRefresh && (
+                      <span style={{marginLeft:'auto',fontSize:11,color:'#10b981',fontWeight:700}}>
+                        {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,'0')}
+                      </span>
+                    )}
+                  </div>
+                  {lastRefresh && (
+                    <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>
+                      อัปเดตล่าสุด: {lastRefresh.toLocaleTimeString('th-TH')}
+                    </div>
+                  )}
                   <div style={{display:'flex',gap:8,marginTop:10}}>
-                    <button className="gs-load-btn" onClick={handleGSheet} disabled={loading}>
+                    <button className="gs-load-btn" onClick={()=>handleGSheet(false)} disabled={loading}>
                       {loading ? '⏳ กำลังโหลด...' : '🔄 โหลดข้อมูล'}
                     </button>
                     <button className="gs-cancel-btn" onClick={() => setShowGS(false)}>ยกเลิก</button>
@@ -289,6 +429,12 @@ export default function App() {
               <span>{loading ? loadingMsg : data.filename}</span>
             </div>
 
+            {autoRefresh && (
+              <span style={{display:'flex',alignItems:'center',gap:5,fontSize:12,color:'#10b981',fontWeight:700,
+                background:'#dcfce7',border:'1px solid #86efac',borderRadius:8,padding:'4px 10px'}}>
+                🔁 Auto {Math.floor(countdown/60)}:{String(countdown%60).padStart(2,'0')}
+              </span>
+            )}
             <span className="header-date">{new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</span>
             <span className="header-badge">โครงการ NHIP</span>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={e=>handleFile(e.target.files[0])} />
