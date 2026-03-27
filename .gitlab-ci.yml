@@ -1,4 +1,15 @@
-# Disable all CI/CD pipelines - deploying via Netlify instead
-workflow:
+image: node:20
+
+stages:
+  - build
+
+build:
+  stage: build
+  script:
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
   rules:
-    - when: never
+    - if: '$CI_COMMIT_BRANCH == "main"'
