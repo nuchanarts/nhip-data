@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import * as XLSX from 'xlsx'
 
@@ -13,7 +13,7 @@ const COLORS = ['#2563eb','#10b981','#f59e0b','#7c3aed','#06b6d4','#f97316','#ef
 // normalize: trim + collapse spaces + lowercase for comparison
 const norm = s => (s||'').trim().replace(/\s+/g,' ')
 
-export default function Workload({ data }) {
+function Workload({ data }) {
   const { installList } = data
   const [sortBy, setSortBy] = useState('total')
   const [search, setSearch] = useState('')
@@ -378,3 +378,5 @@ export default function Workload({ data }) {
     </div>
   )
 }
+
+export default memo(Workload)

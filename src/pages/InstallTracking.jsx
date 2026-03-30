@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import html2canvas from 'html2canvas'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, AreaChart, Area, LabelList } from 'recharts'
 import * as XLSX from 'xlsx'
 
@@ -14,6 +15,96 @@ const JOB_COLOR   = {'ใช้งานระบบ':'#10b981','ใช้งา
 
 export default function InstallTracking({ data }) {
   const { job_status, progress, regions, monthly, installers, regionDone, provinceCnt, migrationDone, installList } = data
+  const regionTableRef = useRef(null)
+
+  const exportJpg = async () => {
+    if (!regionTableRef.current) return
+    const canvas = await html2canvas(regionTableRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+    const link = document.createElement('a')
+    link.download = `สรุปรายงานติดตั้งแยกเขต_${new Date().toLocaleDateString('th-TH').replace(/\//g,'-')}.jpg`
+    link.href = canvas.toDataURL('image/jpeg', 0.95)
+    link.click()
+  }
+
+  const exportReportJpg = async (regionDoneData) => {
+    const today = new Date().toLocaleDateString('th-TH', { day:'2-digit', month:'2-digit', year:'numeric' })
+
+    // สร้าง summary แยกตาม summary status จาก installList
+    const regionNums = [1,2,3,4,5,6,7,8,9,10,11,12]
+    const STATUSES = [
+      { key:'ทำรายงานติดตั้งแล้ว',        label:'ทำรายงานติดตั้งแล้ว',        bg:'#dcfce7', color:'#166534' },
+      { key:'รอติดตั้ง',                   label:'รอติดตั้ง',                   bg:'#fef3c7', color:'#92400e' },
+      { key:'ยังไม่ทำรายงานติดตั้ง',       label:'ยังไม่ทำรายงานติดตั้ง',       bg:'#fee2e2', color:'#991b1b' },
+      { key:'ส่งกลับแก้ไขรายงานติดตั้ง',  label:'ส่งกลับแก้ไขรายงานติดตั้ง',  bg:'#ede9fe', color:'#5b21b6' },
+    ]
+
+    // นับแยกตาม summary + region
+    const matrix = {}
+    STATUSES.forEach(s => { matrix[s.key] = {} })
+    ;(installList||[]).forEach(r => {
+      const st = (r.summary||'').trim()
+      const rg = r.region
+      if (matrix[st] && rg) matrix[st][rg] = (matrix[st][rg]||0) + 1
+    })
+
+    const wrap = document.createElement('div')
+    wrap.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:24px;font-family:Sarabun,sans-serif;width:640px'
+    document.body.appendChild(wrap)
+
+    const totalAll = regionDoneData.reduce((a,r)=>a+r.total,0)
+
+    wrap.innerHTML = `
+      <div style="text-align:center;font-size:15px;font-weight:800;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:8px;margin-bottom:0">
+        สถานะการติดตั้ง รพ.สต. แยกตามเขตสุขภาพ
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:0">
+        <thead>
+          <tr style="background:#1e3a8a;color:#fff">
+            <th style="padding:8px 12px;text-align:center;border:1px solid #1e3a8a">วันที่</th>
+            <th style="padding:8px 12px;text-align:center;border:1px solid #1e3a8a">สถานะ</th>
+            <th style="padding:8px 12px;text-align:center;border:1px solid #1e3a8a">รายละเอียดแยกเขต</th>
+            <th style="padding:8px 12px;text-align:center;border:1px solid #1e3a8a">จำนวน</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${STATUSES.map(s => {
+            const byRegion = matrix[s.key]
+            const total = Object.values(byRegion).reduce((a,b)=>a+b,0)
+            if (total === 0) return ''
+            const regionLines = regionNums
+              .filter(rg => byRegion[rg] > 0)
+              .map(rg => `เขต ${rg} = ${byRegion[rg].toLocaleString()} รพ.สต.`)
+              .join('<br/>')
+            return `
+              <tr>
+                <td style="padding:8px 12px;text-align:center;border:1px solid #d1d5db;vertical-align:top;white-space:nowrap">${today}</td>
+                <td style="padding:8px 12px;text-align:center;border:1px solid #d1d5db;background:${s.bg};color:${s.color};font-weight:700;vertical-align:top">${s.label}</td>
+                <td style="padding:8px 14px;border:1px solid #d1d5db;line-height:1.9;color:#374151">${regionLines}</td>
+                <td style="padding:8px 12px;text-align:center;border:1px solid #d1d5db;font-size:22px;font-weight:900;color:${s.color};vertical-align:middle">${total.toLocaleString()}</td>
+              </tr>`
+          }).join('')}
+          <tr style="background:#f1f5f9;font-weight:800">
+            <td style="padding:8px 12px;text-align:center;border:1px solid #d1d5db" colspan="2">รวมทั้งหมด</td>
+            <td style="padding:8px 14px;border:1px solid #d1d5db;color:#374151">
+              ${regionNums.filter(rg=>regionDoneData.find(r=>r.name===`เขต ${rg}`))
+                .map(rg=>{ const r=regionDoneData.find(x=>x.name===`เขต ${rg}`); return r?`เขต ${rg} = ${r.total.toLocaleString()} รพ.สต.`:'' })
+                .filter(Boolean).join('<br/>')}
+            </td>
+            <td style="padding:8px 12px;text-align:center;border:1px solid #d1d5db;font-size:22px;font-weight:900;color:#1e3a8a">${totalAll.toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="text-align:right;font-size:11px;color:#9ca3af;margin-top:6px">ข้อมูล ณ วันที่ ${today} · NHIP Dashboard</div>
+    `
+
+    const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+    document.body.removeChild(wrap)
+    const link = document.createElement('a')
+    link.download = `สรุปสถานะติดตั้งแยกเขต_${today.replace(/\//g,'-')}.jpg`
+    link.href = canvas.toDataURL('image/jpeg', 0.95)
+    link.click()
+  }
+
   const [reportTab, setReportTab] = useState('done')
   const [inactivePage, setInactivePage] = useState(1)
   const [reportPage, setReportPage] = useState(1)
@@ -253,13 +344,31 @@ export default function InstallTracking({ data }) {
 
       {/* ===== สรุปรายงานติดตั้งแยกเขต ===== */}
       <div className="section-label" style={{marginTop:24}}>📋 สรุปรายงานติดตั้งแยกเขตสุขภาพ</div>
-      <div className="chart-card">
+      <div className="chart-card" ref={regionTableRef}>
         <div className="chart-header">
           <div>
             <div className="chart-title">จำนวน รพ.สต. แยกตามเขตสุขภาพ 1–12</div>
             <div className="chart-sub">รวมทั้งหมด {fmt(totalAllRegion)} แห่ง · ดำเนินการแล้ว {fmt(totalDoneRegion)} แห่ง ({totalAllRegion ? ((totalDoneRegion/totalAllRegion)*100).toFixed(1) : 0}%)</div>
           </div>
-          <span className="chart-badge">12 เขต</span>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span className="chart-badge">12 เขต</span>
+            <button onClick={exportJpg} style={{
+              display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
+              background:'linear-gradient(135deg,#2563eb,#0ea5e9)',color:'#fff',
+              border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',
+              boxShadow:'0 2px 6px rgba(37,99,235,0.3)'
+            }}>
+              📷 Export JPG
+            </button>
+            <button onClick={() => exportReportJpg(regionDoneData)} style={{
+              display:'flex',alignItems:'center',gap:6,padding:'6px 14px',
+              background:'linear-gradient(135deg,#059669,#10b981)',color:'#fff',
+              border:'none',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',
+              boxShadow:'0 2px 6px rgba(5,150,105,0.3)'
+            }}>
+              📋 Export รายงานแยกเขต
+            </button>
+          </div>
         </div>
         <div className="leaderboard">
           <div className="lb-header">

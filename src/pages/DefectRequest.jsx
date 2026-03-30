@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 
 const STATUS_COLOR = {
-  'แก้ไขเรียบร้อย':'#10b981','จัดทำ MANTIS':'#2563eb','รอแจ้งทีมพัฒนา':'#f59e0b',
-  'รอทีมพัฒนา':'#f97316','ยกเลิก':'#94a3b8','รอ compile':'#7c3aed','ส่งกลับนักพัฒนา':'#ef4444','จัดทำ Taiga':'#06b6d4'
+  'ดำเนินการแล้ว':'#10b981','แก้ไขเรียบร้อย':'#10b981','จัดทำ MANTIS':'#2563eb','รอแจ้งทีมพัฒนา':'#f59e0b',
+  'รอทีมพัฒนา':'#f97316','ยกเลิก':'#94a3b8','รอ compile':'#7c3aed','ส่งกลับนักพัฒนา':'#ef4444',
+  'จัดทำ Taiga':'#06b6d4','กำลังดำเนินการ':'#f59e0b','รอดำเนินการ':'#e2e8f0'
 }
-const URG_COLOR = {'ด่วน':'#ef4444','ปกติ':'#64748b'}
+const URG_COLOR = {'ด่วน':'#ef4444','ปกติ':'#64748b','ไม่ด่วน':'#64748b'}
 const fmt = n => Number(n).toLocaleString()
 const TT = ({ active, payload, label }) => active && payload?.length ? (
   <div className="tt"><div className="tt-label">{label}</div>
@@ -26,10 +27,10 @@ export default function DefectRequest({ data }) {
   const du = defect_urgency || {}
 
   const total = Object.values(ds).reduce((a,b)=>a+b,0) || 1
-  const done  = ds['แก้ไขเรียบร้อย']||0
+  const done  = (ds['ดำเนินการแล้ว']||0) + (ds['แก้ไขเรียบร้อย']||0)
   const pending = total - done
   const urgent = du['ด่วน']||0
-  const normal = du['ปกติ']||0
+  const normal = (du['ปกติ']||0) + (du['ไม่ด่วน']||0)
 
   const statusData = Object.entries(ds).map(([name,value])=>({name,value,color:STATUS_COLOR[name]||'#94a3b8'}))
   const sysData = Object.entries(dsys).map(([name,value])=>({name,value})).slice(0,10)

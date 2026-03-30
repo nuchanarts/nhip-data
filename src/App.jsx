@@ -12,6 +12,7 @@ import StandbyQA from './pages/StandbyQA'
 import Training from './pages/Training'
 import Workload from './pages/Workload'
 import InstallerMgmt from './pages/InstallerMgmt'
+import HospList from './pages/HospList'
 import './index.css'
 
 export const DEFAULT_DATA = {
@@ -61,14 +62,49 @@ function parseExcel(file) {
 
         // Sheet 5: ข้อมูลผู้ติดตั้ง
         const s5 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[5]], { header:1, defval:null })
+        // dynamic header lookup สำหรับ Sheet 5
+        const h5 = (s5[0]||[]).map(h=>String(h||'').trim())
+        console.log('📋 Sheet5 headers:', h5)
+        const s5col = key => {
+          const patterns = {
+            hospcode:    ['รหัสหน่วย','hospcode','รหัส'],
+            region:      ['เขต'],
+            name:        ['ชื่อหน่วย','ชื่อ รพ','ชื่อ'],
+            province:    ['จังหวัด'],
+            amphoe:      ['อำเภอ'],
+            install_date:['วันที่ติดตั้ง','วันติดตั้ง'],
+            mig_start:   ['วันเริ่ม Migration','เริ่ม Mig'],
+            mig_end:     ['วันสิ้นสุด Migration','สิ้นสุด Mig'],
+            trans_start: ['วันเริ่ม Transition','เริ่ม Trans'],
+            trans_end:   ['วันสิ้นสุด Transition','สิ้นสุด Trans'],
+            progress:    ['สถานะการดำเนินการ','สถานะ Progress','Progress'],
+            status:      ['สถานะงาน','Job Status','สถานะ Job'],
+            finish_date: ['วันที่เสร็จ','วันเสร็จ'],
+            responsible: ['ผู้ติดตั้ง','ผู้รับผิดชอบ'],
+            summary:     ['สรุปรายงานติดตั้ง','สรุปรายงาน','รายงานติดตั้ง'],
+            check_date:  ['วันที่ตรวจสอบ','วันตรวจสอบ'],
+            remark:      ['หมายเหตุ','Remark'],
+            pm:          ['PM','Project Manager'],
+          }
+          const pats = patterns[key] || [key]
+          const idx = h5.findIndex(h => pats.some(p => h.includes(p)))
+          return idx >= 0 ? idx : null
+        }
+        // fallback index เดิม ถ้าหา header ไม่เจอ
+        const fb5 = { hospcode:0,region:1,name:2,province:3,amphoe:4,install_date:5,mig_start:6,mig_end:7,trans_start:8,trans_end:9,progress:10,status:11,finish_date:12,responsible:13,summary:14,check_date:15,remark:16,pm:17 }
+        const c5 = key => s5col(key) ?? fb5[key]
+        console.log('📋 Sheet5 summary col:', c5('summary'), '| progress col:', c5('progress'), '| status col:', c5('status'))
+
         const js={}, pg={}, rg={}, mo={}, regionDone={}, provinceCnt={}
         const installList = []
         let migDone = 0
-        for(let i=1;i<s5.length;i++){
-          const r=s5[i]; if(!r[0]) continue
-          const j=String(r[11]||''), p=String(r[10]||'')
-          const region=r[1]?Math.round(Number(r[1])):null, dt=r[5]
-          const province=String(r[3]||''), amphoe=String(r[4]||'')
+        const s5start = h5.length > 0 ? 1 : 0
+        for(let i=s5start;i<s5.length;i++){
+          const r=s5[i]; if(!r[c5('hospcode')]) continue
+          const j=String(r[c5('status')]||''), p=String(r[c5('progress')]||'')
+          const region=r[c5('region')]?Math.round(Number(r[c5('region')])):null
+          const dt=r[c5('install_date')]
+          const province=String(r[c5('province')]||''), amphoe=String(r[c5('amphoe')]||'')
           if(j&&j!=='null') js[j]=(js[j]||0)+1
           if(p&&p!=='null') pg[p]=(pg[p]||0)+1
           if(region){ rg[region]=(rg[region]||0)+1
@@ -77,31 +113,33 @@ function parseExcel(file) {
             if(p==='ดำเนินการแล้ว') regionDone[region].done++
           }
           if(province&&province!=='null') provinceCnt[province]=(provinceCnt[province]||0)+1
-          if(r[7]) migDone++
+          const migEndVal = r[c5('mig_end')]
+          if(migEndVal) migDone++
           if(dt instanceof Date && dt.getFullYear()>2000){
             const yr=dt.getFullYear()>2100?dt.getFullYear()-543:dt.getFullYear()
             const k=`${yr}-${String(dt.getMonth()+1).padStart(2,'0')}`
             mo[k]=(mo[k]||0)+1
           }
+          const summaryVal = String(r[c5('summary')]||'').trim()
           installList.push({
-            hospcode:   String(r[0]||''),
+            hospcode:    String(r[c5('hospcode')]||''),
             region,
-            name:       String(r[2]||''),
+            name:        String(r[c5('name')]||''),
             province,
             amphoe,
             install_date: dt instanceof Date ? dt.toLocaleDateString('th-TH') : '',
-            mig_start:  r[6] instanceof Date ? r[6].toLocaleDateString('th-TH') : '',
-            mig_end:    r[7] instanceof Date ? r[7].toLocaleDateString('th-TH') : '',
-            trans_start:r[8] instanceof Date ? r[8].toLocaleDateString('th-TH') : '',
-            trans_end:  r[9] instanceof Date ? r[9].toLocaleDateString('th-TH') : '',
-            progress:   p,
-            status:     j,
-            finish_date:r[12] instanceof Date ? r[12].toLocaleDateString('th-TH') : '',
-            responsible: String(r[13]||''),
-            summary:     String(r[14]||''),
-            check_date:  r[15] instanceof Date ? r[15].toLocaleDateString('th-TH') : String(r[15]||''),
-            remark:      String(r[16]||''),
-            pm:          String(r[17]||''),
+            mig_start:   r[c5('mig_start')] instanceof Date ? r[c5('mig_start')].toLocaleDateString('th-TH') : '',
+            mig_end:     migEndVal instanceof Date ? migEndVal.toLocaleDateString('th-TH') : '',
+            trans_start: r[c5('trans_start')] instanceof Date ? r[c5('trans_start')].toLocaleDateString('th-TH') : '',
+            trans_end:   r[c5('trans_end')] instanceof Date ? r[c5('trans_end')].toLocaleDateString('th-TH') : '',
+            progress:    p,
+            status:      j,
+            finish_date: r[c5('finish_date')] instanceof Date ? r[c5('finish_date')].toLocaleDateString('th-TH') : '',
+            responsible: String(r[c5('responsible')]||''),
+            summary:     summaryVal,
+            check_date:  r[c5('check_date')] instanceof Date ? r[c5('check_date')].toLocaleDateString('th-TH') : String(r[c5('check_date')]||''),
+            remark:      String(r[c5('remark')]||''),
+            pm:          String(r[c5('pm')]||''),
           })
         }
         result.job_status=js; result.progress=pg
@@ -171,41 +209,60 @@ function parseExcel(file) {
         result.standby_status=Object.fromEntries(Object.entries(ss).filter(([k])=>k!=='null'))
         result.callList=callList
 
-        // Sheet: Defect — ค้นหาตามชื่อก่อน ถ้าไม่เจอใช้ index 8
-        const defectSheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('defect')||n.includes('บั๊ก')||n.includes('Bug')) || wb.SheetNames[8]
-        const s8=XLSX.utils.sheet_to_json(wb.Sheets[defectSheetName],{header:1,defval:null})
-        console.log('📋 Defect sheet:', defectSheetName, '| headers row0:', s8[0], '| row1:', s8[1])
+        // Sheet: Defect — หาชื่อ sheet "02.Req/ Defect" โดยตรงก่อน แล้วค่อย fallback
+        console.log('📋 All sheets:', wb.SheetNames)
+        const defectSheetName =
+          wb.SheetNames.find(n => n === '02.Req/ Defect') ||
+          wb.SheetNames.find(n => n.toLowerCase().includes('defect')) ||
+          wb.SheetNames.find(n => n.toLowerCase().includes('req')) ||
+          wb.SheetNames[8]
+        const s8 = XLSX.utils.sheet_to_json(wb.Sheets[defectSheetName], { header:1, defval:null })
+        console.log('📋 Defect sheet:', defectSheetName, '| rows:', s8.length)
+        for (let ri = 0; ri < Math.min(5, s8.length); ri++) console.log(`📋 Defect row${ri}:`, s8[ri])
 
-        // dynamic column mapping for defect sheet
-        // หา header row (แถวแรกที่มีหัวคอลัมน์)
-        const defectHeaderRowIdx = s8.findIndex(row => row && row.some(c => String(c||'').includes('วันที่') || String(c||'').toLowerCase().includes('defect') || String(c||'').includes('ระบบ') || String(c||'').includes('สถานะ')))
+        // หา header row — ต้องมี "สถานะดำเนินการ" หรือมี keyword ≥2 ตัวในแถวเดียวกัน
+        const DEFECT_HEADER_KEYS = ['สถานะดำเนินการ','วันที่','ระบบงาน','ด่วน','หัวข้อ','รายละเอียด','mantis','Mantis','ผู้รับผิดชอบ']
+        const defectHeaderRowIdx = s8.findIndex(row => {
+          if (!row) return false
+          const cells = row.map(c => String(c||'').trim())
+          // ต้องมี "สถานะดำเนินการ" โดยตรง หรือมี keyword ≥2 ตัว
+          if (cells.some(c => c.includes('สถานะดำเนินการ') || c.includes('สถานะดำเนินกา'))) return true
+          const matchCount = DEFECT_HEADER_KEYS.filter(k => cells.some(c => c.includes(k))).length
+          return matchCount >= 2
+        })
         const defectHeaderRow = defectHeaderRowIdx >= 0 ? s8[defectHeaderRowIdx] : []
-        const hd = defectHeaderRow.map(h=>String(h||'').trim())
-        const cid = key => {
-          const patterns = {
-            date:        ['วันที่'],
-            system:      ['ระบบงาน','ระบบ','Module','module'],
-            sys_status:  ['สถานะระบบ','สถานะการใช้งาน'],
-            urgency:     ['ด่วน','ความเร่งด่วน','urgency','Urgency','Priority'],
-            status:      ['สถานะดำเนินการ','สถานะ'],
-            detail:      ['หัวข้อ','รายละเอียด','detail','Detail','ปัญหา'],
-            mantis:      ['mantis','Mantis','MANTIS','Taiga','taiga','Issue No','issue'],
-            responsible: ['ผู้รับผิดชอบ','ผู้ดำเนินการ','ผู้แก้ไข'],
+        const hd = defectHeaderRow.map(h => String(h||'').trim())
+        console.log('📋 Defect header row idx:', defectHeaderRowIdx, '| headers:', hd)
+
+        // ค้นหา column โดยลอง pattern ที่เจาะจงก่อน แล้วค่อย fallback
+        const findCol = (pats) => {
+          for (const p of pats) {
+            const i = hd.findIndex(h => h.includes(p))
+            if (i >= 0) return i
           }
-          const pats = patterns[key] || [key]
-          const idx = hd.findIndex(h => pats.some(p => h.toLowerCase().includes(p.toLowerCase())))
-          return idx >= 0 ? idx : null
+          return -1
         }
-        // fallback indices (ถ้า header ไม่เจอ)
+        const colMap = {
+          date:        findCol(['วันที่เจอปัญหา','วันที่']),
+          system:      findCol(['ระบบงาน','ระบบ']),
+          sys_status:  findCol(['สถานะระบบ','สถานะการใช้งาน']),
+          urgency:     findCol(['ด่วน/ไม่ด่วน','ความเร่งด่วน','ด่วน']),
+          status:      findCol(['สถานะดำเนินการ','สถานะดำเนินกา']),
+          detail:      findCol(['หัวข้อ/รายละเอียด','หัวข้อ','รายละเอียด','ปัญหา']),
+          mantis:      findCol(['สถานะทำ Mantis','Mantis','MANTIS','mantis','Taiga','taiga','Issue No']),
+          responsible: findCol(['ผู้รับผิดชอบ','ผู้ดำเนินการ','ผู้แก้ไข']),
+        }
+        console.log('📋 Defect colMap:', colMap)
+        // fallback indices ถ้าหา header ไม่เจอ
         const fbd = { date:0, system:1, sys_status:2, urgency:3, status:4, detail:5, mantis:6, responsible:7 }
-        const cold = key => cid(key) ?? fbd[key]
+        const cold = key => colMap[key] >= 0 ? colMap[key] : fbd[key]
         console.log('📋 Defect col mapping:', Object.keys(fbd).map(k=>`${k}→${cold(k)}`).join(', '))
 
         const ds={},dsys={},du={},defectList=[]
         const defectDataStart = defectHeaderRowIdx >= 0 ? defectHeaderRowIdx + 1 : 2
         for(let i=defectDataStart;i<s8.length;i++){
           const r=s8[i]; if(!r || r.every(c=>!c)) continue
-          const s=String(r[cold('status')]||''), sys=String(r[cold('system')]||''), u=String(r[cold('urgency')]||'')
+          const s=String(r[cold('status')]||'').trim(), sys=String(r[cold('system')]||'').trim(), u=String(r[cold('urgency')]||'').trim()
           if(s&&s!=='null') ds[s]=(ds[s]||0)+1
           if(sys&&sys!=='null') dsys[sys]=(dsys[sys]||0)+1
           if(u&&u!=='null') du[u]=(du[u]||0)+1
@@ -221,6 +278,7 @@ function parseExcel(file) {
             responsible: String(r[cold('responsible')]||''),
           })
         }
+        console.log('📋 Defect status values found:', ds)
         result.defect_status=ds; result.defect_urgency=du
         result.defect_system=Object.fromEntries(Object.entries(dsys).filter(([k])=>k!=='null').sort((a,b)=>b[1]-a[1]).slice(0,10))
         result.defectList=defectList
@@ -264,6 +322,7 @@ const PAGES = {
   training:   Training,
   workload:   Workload,
   installer:  InstallerMgmt,
+  hosplist:   HospList,
 }
 
 function getGSheetExportUrl(url) {
@@ -287,7 +346,7 @@ export default function App() {
   const [showGS, setShowGS] = useState(false)
   const [gsUrl, setGsUrl] = useState('https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit?usp=sharing')
   const [gsError, setGsError] = useState('')
-  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(null)
   const [countdown, setCountdown] = useState(AUTO_REFRESH_MS / 1000)
   const fileRef = useRef()
@@ -322,6 +381,11 @@ export default function App() {
       if (!silent) setGsError('โหลดไม่ได้ — ตรวจสอบว่า Sheet เปิดเป็น Public')
     } finally { setLoading(false); setLoadingMsg('') }
   }, [gsUrl])
+
+  // โหลด Google Sheets อัตโนมัติครั้งแรก
+  useEffect(() => {
+    handleGSheet(true)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh interval
   useEffect(() => {

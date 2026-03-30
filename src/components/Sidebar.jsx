@@ -9,6 +9,7 @@ const MENU = [
   // { key: 'training',  icon: '🎓', label: 'Training Support',    sub: 'ปัญหาระหว่างอบรม' },
   { key: 'workload',  icon: '⏱️', label: 'Workload Tracking',   sub: 'ชั่วโมงทำงาน' },
   { key: 'installer', icon: '👤', label: 'ทีมผู้ติดตั้ง',       sub: 'Installer Management' },
+  { key: 'hosplist',  icon: '🏨', label: 'รายชื่อ รพ.สต.',      sub: 'Hospital List' },
 ]
 
 export default function Sidebar({ current, onNavigate }) {
