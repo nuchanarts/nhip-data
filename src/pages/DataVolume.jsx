@@ -104,7 +104,7 @@ export default function DataVolume({ data }) {
 
   return (
     <div className="page">
-      <div className="page-title">📊 ปริมาณข้อมูล HIS</div>
+      <div className="page-title">📊 ข้อมูลการติดตั้งระบบ</div>
       <div className="page-desc">ข้อมูลผู้ติดตั้ง — รายชื่อ รพ.สต. เขต จังหวัด อำเภอ วันที่ติดตั้ง Migration และสถานะการใช้งาน</div>
 
       {/* KPI */}

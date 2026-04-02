@@ -10,14 +10,25 @@ const TT = ({ active, payload, label }) => active && payload?.length ? (
 const norm = s => (s||'').trim().replace(/\s+/g,' ')
 
 export default function InstallerMgmt({ data }) {
-  const { installList } = data
+  const { installList, productionVisits = [] } = data
   const [sortCol, setSortCol] = useState('installed')
   const [sortDir, setSortDir] = useState('desc')
+  const [realSortCol, setRealSortCol] = useState('usingReal')
+  const [realSortDir, setRealSortDir] = useState('desc')
 
   const handleSort = col => {
     if (sortCol === col) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
     else { setSortCol(col); setSortDir('desc') }
   }
+  const handleRealSort = col => {
+    if (realSortCol === col) setRealSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    else { setRealSortCol(col); setRealSortDir('desc') }
+  }
+
+  // prodSet จาก productionVisits (ใช้จริง มี OPD > 0)
+  const prodSet = new Set(
+    productionVisits.filter(h => h.total > 0).map(h => parseInt(h.hospcode, 10))
+  )
 
   // นับจาก installList.responsible ครบทุกคน
   const workerMap = {}
@@ -25,23 +36,41 @@ export default function InstallerMgmt({ data }) {
     const name = norm(r.responsible)
     if (!name) return
     if (!workerMap[name]) workerMap[name] = {
-      name, installed:0, active:0, parallel:0, inProgress:0, inactive:0, cancelled:0
+      name, installed:0, active:0, parallel:0, inProgress:0, inactive:0, cancelled:0,
+      installedDone:0, usingReal:0, provStats:{},
     }
     workerMap[name].installed++
     if (r.status === 'ใช้งานระบบ')       workerMap[name].active++
     else if (r.status === 'ใช้งานคู่ขนาน') workerMap[name].parallel++
     else if (r.status === 'ไม่ได้ใช้งาน' || r.status === 'เลิกใช้งาน') workerMap[name].inactive++
     if (r.progress === 'อยู่ในระหว่างดำเนินการ') workerMap[name].inProgress++
+    if (r.progress === 'ดำเนินการแล้ว') {
+      workerMap[name].installedDone++
+      const prov = r.province?.includes('-') ? r.province.split('-').slice(1).join('-') : (r.province || '')
+      if (prov) {
+        if (!workerMap[name].provStats[prov]) workerMap[name].provStats[prov] = { installed: 0, using: 0 }
+        workerMap[name].provStats[prov].installed++
+        if (prodSet.has(parseInt(r.hospcode, 10))) {
+          workerMap[name].usingReal++
+          workerMap[name].provStats[prov].using++
+        }
+      } else {
+        if (prodSet.has(parseInt(r.hospcode, 10))) workerMap[name].usingReal++
+      }
+    }
   })
 
   const sortFns = {
-    installed:  (a,b) => b.installed  - a.installed,
-    active:     (a,b) => b.active     - a.active,
-    parallel:   (a,b) => b.parallel   - a.parallel,
-    inProgress: (a,b) => b.inProgress - a.inProgress,
-    inactive:   (a,b) => b.inactive   - a.inactive,
-    pct:        (a,b) => (b.installed>0?b.active/b.installed:0) - (a.installed>0?a.active/a.installed:0),
-    name:       (a,b) => a.name.localeCompare(b.name,'th'),
+    installed:    (a,b) => b.installed    - a.installed,
+    active:       (a,b) => b.active       - a.active,
+    parallel:     (a,b) => b.parallel     - a.parallel,
+    inProgress:   (a,b) => b.inProgress   - a.inProgress,
+    inactive:     (a,b) => b.inactive     - a.inactive,
+    pct:          (a,b) => (b.installed>0?b.active/b.installed:0) - (a.installed>0?a.active/a.installed:0),
+    name:         (a,b) => a.name.localeCompare(b.name,'th'),
+    installedDone:(a,b) => b.installedDone - a.installedDone,
+    usingReal:    (a,b) => b.usingReal    - a.usingReal,
+    usingPct:     (a,b) => (b.installedDone>0?b.usingReal/b.installedDone:0) - (a.installedDone>0?a.usingReal/a.installedDone:0),
   }
   const list = Object.values(workerMap).sort((a,b) => {
     const fn = sortFns[sortCol] || sortFns.installed
@@ -80,6 +109,123 @@ export default function InstallerMgmt({ data }) {
           </div>
         ))}
       </div>
+
+      {/* ── ใช้งานจริง (OPD) รายบุคคล ── */}
+      {prodSet.size > 0 && (() => {
+        const realList = Object.values(workerMap)
+          .filter(w => w.installedDone > 0)
+          .sort((a, b) => {
+            const fn = sortFns[realSortCol] || sortFns.usingReal
+            return realSortDir === 'asc' ? -fn(a,b) : fn(a,b)
+          })
+        const arrow = col => realSortCol===col ? (realSortDir==='desc'?'▼':'▲') : '⇅'
+        const totalDone    = realList.reduce((s,w) => s+w.installedDone, 0)
+        const totalUsing   = realList.reduce((s,w) => s+w.usingReal, 0)
+        const totalNotUsing = totalDone - totalUsing
+        return (
+          <>
+            <div className="section-label" style={{marginTop:24}}>📈 ใช้งานจริง (OPD) — รายผู้รับผิดชอบ</div>
+            <div className="chart-card" style={{marginBottom:22}}>
+              <div className="chart-header">
+                <div>
+                  <div className="chart-title">ติดตั้งแล้ว (ดำเนินการแล้ว) เทียบกับที่ส่ง OPD จริง</div>
+                  <div className="chart-sub">เรียงตามจำนวนใช้งานจริง · ข้อมูล OPD 3 วันล่าสุด</div>
+                </div>
+                <div style={{display:'flex',gap:12,fontSize:12,flexShrink:0}}>
+                  <span style={{color:'#10b981',fontWeight:700}}>{fmt(totalUsing)} ใช้จริง</span>
+                  <span style={{color:'#f59e0b',fontWeight:700}}>{fmt(totalNotUsing)} ไม่มีข้อมูล</span>
+                  <span style={{color:'#64748b'}}>/ {fmt(totalDone)} ติดตั้งแล้ว</span>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="lb-header" style={{cursor:'default'}}>
+                <span style={{width:32}}>#</span>
+                <span style={{flex:2,cursor:'pointer',userSelect:'none',
+                  fontWeight:realSortCol==='name'?700:500,color:realSortCol==='name'?'var(--text-primary)':'var(--text-secondary)'}}
+                  onClick={()=>handleRealSort('name')}>ผู้รับผิดชอบ {arrow('name')}</span>
+                {[
+                  {col:'installedDone', label:'ติดตั้งแล้ว'},
+                  {col:'usingReal',     label:'ใช้งานจริง'},
+                ].map(({col,label})=>(
+                  <span key={col} onClick={()=>handleRealSort(col)}
+                    style={{flex:1,textAlign:'right',cursor:'pointer',userSelect:'none',
+                      fontWeight:realSortCol===col?700:500,color:realSortCol===col?'var(--text-primary)':'var(--text-secondary)'}}>
+                    {label} {arrow(col)}
+                  </span>
+                ))}
+                <span onClick={()=>handleRealSort('usingPct')}
+                  style={{width:150,cursor:'pointer',userSelect:'none',
+                    fontWeight:realSortCol==='usingPct'?700:500,color:realSortCol==='usingPct'?'var(--text-primary)':'var(--text-secondary)'}}>
+                  % ใช้งานจริง {arrow('usingPct')}
+                </span>
+              </div>
+
+              {realList.map((w, i) => {
+                const pct = w.installedDone > 0 ? (w.usingReal / w.installedDone) * 100 : 0
+                const notUsing = w.installedDone - w.usingReal
+                const pctColor = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444'
+                const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':null
+                const provList = Object.entries(w.provStats).sort((a,b) => b[1].installed - a[1].installed)
+                return (
+                  <div key={i} style={{borderBottom:'1px solid var(--border)'}}>
+                    <div className={`lb-row${i<3?' lb-top':''}`} style={{borderBottom:'none',paddingBottom:4}}>
+                      <span className="lb-rank">{medal || i+1}</span>
+                      <div style={{flex:2,minWidth:0}}>
+                        <div style={{fontWeight:700,color:'var(--text-primary)',fontSize:13}}>{w.name}</div>
+                        {/* province tags */}
+                        <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:4}}>
+                          {provList.map(([prov, ps]) => {
+                            const pp = ps.installed > 0 ? Math.round((ps.using/ps.installed)*100) : 0
+                            const tc = pp >= 80 ? '#10b981' : pp >= 50 ? '#f59e0b' : '#ef4444'
+                            return (
+                              <span key={prov} style={{
+                                fontSize:10,padding:'1px 6px',borderRadius:4,
+                                background: tc+'18', border:`1px solid ${tc}44`,
+                                color:'var(--text-primary)',display:'inline-flex',alignItems:'center',gap:3,
+                              }}>
+                                {prov}
+                                <span style={{fontWeight:700,color:tc}}>{ps.using}/{ps.installed}</span>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <span style={{flex:1,textAlign:'right',color:'#2563eb',fontWeight:600}}>{fmt(w.installedDone)}</span>
+                      <span style={{flex:1,textAlign:'right'}}>
+                        <span style={{color:'#10b981',fontWeight:700}}>{fmt(w.usingReal)}</span>
+                        {notUsing > 0 && <span style={{color:'#f59e0b',fontSize:10,marginLeft:4}}>(-{notUsing})</span>}
+                      </span>
+                      <div style={{width:150,display:'flex',alignItems:'center',gap:6}}>
+                        <div style={{flex:1,height:7,background:'#f1f5f9',borderRadius:4,overflow:'hidden',position:'relative'}}>
+                          <div style={{position:'absolute',width:`${Math.min(pct,100)}%`,height:'100%',background:pctColor,borderRadius:4}}/>
+                        </div>
+                        <span style={{fontSize:12,fontWeight:800,color:pctColor,width:38,textAlign:'right'}}>{pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* รวม */}
+              <div className="lb-row" style={{borderTop:'2px solid var(--border)',marginTop:4,paddingTop:8,fontWeight:700}}>
+                <span style={{width:32}}></span>
+                <span style={{flex:2,color:'var(--text-primary)'}}>รวม</span>
+                <span style={{flex:1,textAlign:'right',color:'#2563eb'}}>{fmt(totalDone)}</span>
+                <span style={{flex:1,textAlign:'right',color:'#10b981'}}>{fmt(totalUsing)}</span>
+                <div style={{width:150,display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{flex:1,height:7,background:'#f1f5f9',borderRadius:4,overflow:'hidden'}}>
+                    <div style={{width:`${totalDone>0?(totalUsing/totalDone*100):0}%`,height:'100%',background:'#2563eb',borderRadius:4}}/>
+                  </div>
+                  <span style={{fontSize:12,fontWeight:800,color:'#2563eb',width:38,textAlign:'right'}}>
+                    {totalDone>0?(totalUsing/totalDone*100).toFixed(0):0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       <div className="section-label" style={{marginTop:24}}>ผลงานรายบุคคล</div>
       <div className="chart-card" style={{marginBottom:22}}>

@@ -13,7 +13,18 @@ import Training from './pages/Training'
 import Workload from './pages/Workload'
 import InstallerMgmt from './pages/InstallerMgmt'
 import HospList from './pages/HospList'
+import ProductionData from './pages/ProductionData'
 import './index.css'
+
+const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1hHSiIxPjqDJvmGXP6KwYGJJlm7oZweyc'
+
+function getProdExportUrl(sheetUrl) {
+  const m = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  if (!m) return null
+  const isDev = import.meta.env.DEV
+  const base = isDev ? '/gsheet' : 'https://docs.google.com'
+  return `${base}/spreadsheets/d/${m[1]}/export?format=xlsx`
+}
 
 export const DEFAULT_DATA = {
   job_status: { "รอติดตั้ง":2476,"ใช้งานระบบ":1049,"ใช้งานคู่ขนาน":617,"ไม่ได้ใช้งาน":351,"เลิกใช้งาน":14 },
@@ -43,12 +54,44 @@ export const DEFAULT_DATA = {
     {name:"แมน",inProgress:3,installed:68,active:12,parallel:2,cancelled:2,inactive:46},
   ],
   hospitals: [],
+  productionVisits: [],
+  productionDates: [],
   installList: installDataRaw,
   regionDone: {"1":{done:68,total:254},"2":{done:188,total:431},"3":{done:260,total:262},"4":{done:555,total:616},"5":{done:291,total:416},"6":{done:218,total:380},"7":{done:0,total:105},"8":{done:223,total:409},"9":{done:284,total:696},"10":{done:0,total:432},"11":{done:0,total:198},"12":{done:0,total:310}},
   migrationDone: 493,
   provinceCnt: {"34-อุบลราชธานี":237,"31-บุรีรัมย์":224,"32-สุรินทร์":212,"14-พระนครศรีอยุธยา":206,"50-เชียงใหม่":186,"30-นครราชสีมา":165,"48-นครพนม":135,"33-ศรีสะเกษ":132,"90-สงขลา":126,"24-ฉะเชิงเทรา":119},
   total: 4509,
   filename: 'NHIP_Dashboard_Diary.xlsx'
+}
+
+function parseProductionSheets(ab) {
+  const wb = XLSX.read(ab, { type: 'array' })
+  const productionVisits = []
+  let productionDates = []
+  wb.SheetNames.forEach(sn => {
+    const m = sn.match(/เขต\s*(\d+)/)
+    if (!m) return
+    const region = Number(m[1])
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: null })
+    if (rows.length < 2) return
+    const header = rows[0] || []
+    const dates = header.slice(2).map(d => String(d || ''))
+    if (productionDates.length === 0 && dates.length > 0) productionDates = dates
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r || !r[0]) continue
+      const visits = dates.map((_, di) => Number(r[di + 2] || 0))
+      productionVisits.push({
+        hospcode: String(r[0]),
+        name:     String(r[1] || ''),
+        region,
+        visits,
+        total:  visits.reduce((a, b) => a + b, 0),
+        latest: visits[visits.length - 1] || 0,
+      })
+    }
+  })
+  return { productionVisits, productionDates }
 }
 
 function parseExcel(file) {
@@ -316,6 +359,7 @@ const PAGES = {
   facility:   FacilityMgmt,
   install:    InstallTracking,
   volume:     DataVolume,
+  production: ProductionData,
   callcenter: CallCenter,
   defect:     DefectRequest,
   standby:    StandbyQA,
@@ -335,10 +379,17 @@ function getGSheetExportUrl(url) {
   return `${base}/spreadsheets/d/${m[1]}/export?format=xlsx`
 }
 
-const AUTO_REFRESH_MS = 5 * 60 * 1000 // 5 นาที
+const AUTO_REFRESH_MS = 5 * 60 * 1000  // 5 นาที (main sheet)
+const PROD_REFRESH_MS = 10 * 60 * 1000 // 10 นาที (production sheet)
 
 export default function App() {
   const [data, setData] = useState(DEFAULT_DATA)
+  const [prodLoading, setProdLoading] = useState(false)
+  const [prodError, setProdError] = useState('')
+  const [prodCountdown, setProdCountdown] = useState(PROD_REFRESH_MS / 1000)
+  const [prodSheetUrl, setProdSheetUrl] = useState(PROD_SHEET_DEFAULT_URL)
+  const prodAutoRefreshRef = useRef(null)
+  const prodCountdownRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [page, setPage] = useState('overview')
@@ -357,7 +408,10 @@ export default function App() {
   const handleFile = useCallback(async (file) => {
     if (!file) return
     setLoading(true); setLoadingMsg(`กำลังอ่าน ${file.name}...`)
-    try { setData(await parseExcel(file)) }
+    try {
+      const parsed = await parseExcel(file)
+      setData(prev => ({ ...parsed, productionVisits: prev.productionVisits, productionDates: prev.productionDates }))
+    }
     catch { alert('ไม่สามารถอ่านไฟล์ได้') }
     finally { setLoading(false); setLoadingMsg('') }
   }, [])
@@ -373,7 +427,8 @@ export default function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const blob = await res.blob()
       const file = new File([blob], 'GoogleSheet.xlsx', { type: blob.type })
-      setData(await parseExcel(file))
+      const parsed = await parseExcel(file)
+      setData(prev => ({ ...parsed, productionVisits: prev.productionVisits, productionDates: prev.productionDates }))
       setLastRefresh(new Date())
       setCountdown(AUTO_REFRESH_MS / 1000)
       if (!silent) setShowGS(false)
@@ -381,6 +436,45 @@ export default function App() {
       if (!silent) setGsError('โหลดไม่ได้ — ตรวจสอบว่า Sheet เปิดเป็น Public')
     } finally { setLoading(false); setLoadingMsg('') }
   }, [gsUrl])
+
+  // โหลด Production Sheet — โหลดครั้งเดียวตอนเปิด, มี timeout 20s
+  const loadProdSheet = useCallback((urlOverride) => {
+    const exportUrl = getProdExportUrl(urlOverride || prodSheetUrl)
+    if (!exportUrl) { setProdError('URL ไม่ถูกต้อง'); return }
+    const ctrl = new AbortController()
+    const url = exportUrl
+    const timer = setTimeout(() => ctrl.abort(), 20000)
+    setProdLoading(true)
+    setProdError('')
+    fetch(url, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer() })
+      .then(ab => {
+        clearTimeout(timer)
+        const { productionVisits, productionDates } = parseProductionSheets(ab)
+        setData(prev => ({ ...prev, productionVisits, productionDates }))
+      })
+      .catch(e => {
+        clearTimeout(timer)
+        const msg = e.name === 'AbortError' ? 'หมดเวลา (timeout 20s)' : `โหลดไม่ได้: ${e.message}`
+        setProdError(msg)
+        console.warn('Production sheet load failed:', e)
+      })
+      .finally(() => setProdLoading(false))
+  }, [prodSheetUrl])
+
+  useEffect(() => {
+    loadProdSheet()
+    // auto-refresh ทุก 10 นาที
+    prodAutoRefreshRef.current = setInterval(() => {
+      loadProdSheet()
+      setProdCountdown(PROD_REFRESH_MS / 1000)
+    }, PROD_REFRESH_MS)
+    prodCountdownRef.current = setInterval(() => setProdCountdown(c => c <= 1 ? PROD_REFRESH_MS / 1000 : c - 1), 1000)
+    return () => {
+      clearInterval(prodAutoRefreshRef.current)
+      clearInterval(prodCountdownRef.current)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // โหลด Google Sheets อัตโนมัติครั้งแรก
   useEffect(() => {
@@ -505,7 +599,14 @@ export default function App() {
           </div>
         </header>
         <div className="page-content">
-          <PageComponent data={data} />
+          <PageComponent
+            data={data}
+            {...(page === 'production' ? {
+              prodLoading, prodError, prodCountdown,
+              prodSheetUrl, setProdSheetUrl,
+              onRetryProd: loadProdSheet,
+            } : {})}
+          />
         </div>
       </div>
     </div>

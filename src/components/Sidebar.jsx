@@ -1,14 +1,15 @@
 const MENU = [
   { key: 'overview',  icon: '🏠', label: 'ภาพรวมโครงการ',     sub: 'Overview' },
-  { key: 'facility',  icon: '🏥', label: 'Facility Management', sub: 'หน่วยบริการ' },
-  { key: 'install',   icon: '🚀', label: 'ติดตามการติดตั้ง',   sub: 'Installation Tracking' },
-  { key: 'volume',    icon: '📊', label: 'ปริมาณข้อมูล HIS',   sub: 'Data Volume' },
-  { key: 'callcenter',icon: '☎️', label: 'Call Center',         sub: 'Ticket & SLA' },
+  { key: 'production',icon: '📈', label: 'ข้อมูลการใช้งาน',    sub: 'Usage Data' },
+  { key: 'volume',    icon: '📊', label: 'ข้อมูลการติดตั้งระบบ', sub: 'Installation Data' },
+  { key: 'install',   icon: '🚀', label: 'รายงานการติดตั้ง',    sub: 'Installation Report' },
   { key: 'defect',    icon: '🐞', label: 'Defect & Request',    sub: 'Bug & Feature' },
+  { key: 'callcenter',icon: '☎️', label: 'Call Center',         sub: 'Ticket & SLA' },
   { key: 'standby',   icon: '💬', label: 'ถาม-ตอบ / Stand-by', sub: 'Support Log' },
   // { key: 'training',  icon: '🎓', label: 'Training Support',    sub: 'ปัญหาระหว่างอบรม' },
   { key: 'workload',  icon: '⏱️', label: 'Workload Tracking',   sub: 'ชั่วโมงทำงาน' },
   { key: 'installer', icon: '👤', label: 'ทีมผู้ติดตั้ง',       sub: 'Installer Management' },
+  { key: 'facility',  icon: '🏥', label: 'Facility Management', sub: 'หน่วยบริการ' },
   { key: 'hosplist',  icon: '🏨', label: 'รายชื่อ รพ.สต.',      sub: 'Hospital List' },
 ]
 
