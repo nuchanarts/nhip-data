@@ -16,14 +16,111 @@ import HospList from './pages/HospList'
 import ProductionData from './pages/ProductionData'
 import './index.css'
 
-const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1hHSiIxPjqDJvmGXP6KwYGJJlm7oZweyc'
+const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1QYL-jT-fc4SfXtO2o8nFN9pipbwPDy9j/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
+const DEFECT_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1voV3mHQi7bH2PbBeWaVrk0EaUs-9BnqMpKc53oI__RE/edit?gid=0#gid=0'
+const DEFECT_REFRESH_MS = 10 * 60 * 1000 // 10 นาที
 
-function getProdExportUrl(sheetUrl) {
+function getSheetExportUrl(sheetUrl) {
   const m = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
   if (!m) return null
   const isDev = import.meta.env.DEV
   const base = isDev ? '/gsheet' : 'https://docs.google.com'
   return `${base}/spreadsheets/d/${m[1]}/export?format=xlsx`
+}
+
+function getProdExportUrl(sheetUrl) { return getSheetExportUrl(sheetUrl) }
+
+const DEFECT_COLUMNS_ORDER = [
+  'ลำดับ','เจอปัญหา','แพลตฟอร์ม','ประเภทปัญหา','ความเร่งด่วน','สถานะ','ระบบงาน',
+  'ส่งออกข้อมูล 43 แฟ้ม','PM รับผิดชอบ','ประเภท','ข้อมูลลิงค์ Taiga หรือ MANTIS',
+  'นักพัฒนา','ระยะเวลาพัฒนา(ชม.)','เริ่มพัฒนา','พัฒนาเสร็จ','ลำดับการแก้ไข Dev',
+  'วันที่ต้องได้','วันที่เสร็จ','Tester','ทำไฟล์ taiga หริือ mantis','รหัส MANTIS','จัดทำไฟล์แก้ไข',
+]
+
+function parseDefectSheetOnly(ab) {
+  const wb = XLSX.read(ab, { type: 'array' })
+  console.log('📋 Defect sheets:', wb.SheetNames)
+
+  // หา sheet+row ที่มี column ตรงกับที่รู้จริง
+  // ใช้ exact match ก่อน — 'ลำดับ' หรือ 'สถานะ' หรือ 'ความเร่งด่วน'
+  const ANCHOR_COLS = new Set(['ลำดับ','สถานะ','ความเร่งด่วน','เจอปัญหา','ระบบงาน','แพลตฟอร์ม'])
+  let bestRows = [], bestHeaderIdx = -1, bestScore = 0
+
+  for (const sn of wb.SheetNames) {
+    const r = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: null })
+    for (let ri = 0; ri < Math.min(10, r.length); ri++) {
+      if (!r[ri]) continue
+      const cells = r[ri].map(c => String(c||'').trim())
+      const score = cells.filter(c => ANCHOR_COLS.has(c)).length
+      console.log(`📋 Sheet "${sn}" row ${ri}: score=${score}`, cells.filter(c => ANCHOR_COLS.has(c)))
+      if (score > bestScore) {
+        bestScore = score; bestRows = r; bestHeaderIdx = ri
+      }
+    }
+  }
+
+  console.log(`📋 Best header: score=${bestScore} at row ${bestHeaderIdx}`)
+
+  // ถ้าหาไม่เจอเลย fallback ใช้ sheet ใหญ่สุด row 0
+  if (bestScore === 0) {
+    for (const sn of wb.SheetNames) {
+      const r = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: null })
+      if (r.length > bestRows.length) { bestRows = r; bestHeaderIdx = 0 }
+    }
+  }
+
+  const rawHd = (bestRows[bestHeaderIdx] || []).map(h => String(h||'').trim())
+  console.log('📋 Header row:', rawHd)
+
+  // map column index — exact match ก่อน แล้ว partial
+  const colIdx = {}
+  DEFECT_COLUMNS_ORDER.forEach(col => {
+    let i = rawHd.findIndex(h => h === col)
+    if (i < 0) i = rawHd.findIndex(h => h.includes(col) || col.includes(h))
+    if (i >= 0) colIdx[col] = i
+  })
+  // ถ้า map ได้น้อยมาก ให้ map ตาม position เลย (sheet มีแค่ header row 0)
+  if (Object.keys(colIdx).length < 3) {
+    console.warn('📋 Positional fallback')
+    DEFECT_COLUMNS_ORDER.forEach((col, i) => { colIdx[col] = i })
+  }
+  console.log('📋 colIdx:', colIdx)
+
+  const defectColumns = DEFECT_COLUMNS_ORDER // ใช้ลำดับที่กำหนดเสมอ
+
+  const statusCol  = colIdx['สถานะ']        ?? -1
+  const systemCol  = colIdx['ระบบงาน']      ?? -1
+  const urgencyCol = colIdx['ความเร่งด่วน'] ?? -1
+
+  const ds={}, dsys={}, du={}, defectList=[]
+  const start = bestHeaderIdx >= 0 ? bestHeaderIdx + 1 : 1
+  for (let i = start; i < bestRows.length; i++) {
+    const r = bestRows[i]; if (!r || r.every(c => !c)) continue
+    const s   = statusCol  >= 0 ? String(r[statusCol]||'').trim()  : ''
+    const sys = systemCol  >= 0 ? String(r[systemCol]||'').trim()  : ''
+    const u   = urgencyCol >= 0 ? String(r[urgencyCol]||'').trim() : ''
+    if (s   && s   !== 'null') ds[s]     = (ds[s]||0) + 1
+    if (sys && sys !== 'null') dsys[sys] = (dsys[sys]||0) + 1
+    if (u   && u   !== 'null') du[u]     = (du[u]||0) + 1
+    const row = {}
+    defectColumns.forEach(col => {
+      const ci = colIdx[col] ?? -1
+      const val = ci >= 0 ? r[ci] : null
+      row[col] = val instanceof Date ? val.toLocaleDateString('th-TH') : String(val == null ? '' : val)
+    })
+    row.__status  = s
+    row.__system  = sys
+    row.__urgency = u
+    defectList.push(row)
+  }
+  console.log(`📋 Defect parsed: ${defectList.length} rows, status:`, ds)
+  return {
+    defect_status:  ds,
+    defect_urgency: du,
+    defect_system:  Object.fromEntries(Object.entries(dsys).filter(([k])=>k&&k!=='null').sort((a,b)=>b[1]-a[1]).slice(0,10)),
+    defectColumns,
+    defectList,
+  }
 }
 
 export const DEFAULT_DATA = {
@@ -35,6 +132,7 @@ export const DEFAULT_DATA = {
   standby_type: {"การใช้งาน":1907,"ส่งออกข้อมูล":666,"ติดตั้งระบบ":368,"ข้อมูลพื้นฐาน":343,"Defect/BUG":65,"แบบฟอร์ม":32,"Requirement":19},
   standby_status: {"ดำเนินการแล้ว":3276,"กำลังดำเนินการ":80,"รอดำเนินการ":79,"ไม่ดำเนินการ":1},
   defect_status: {"จัดทำ MANTIS":54,"รอแจ้งทีมพัฒนา":35,"แก้ไขเรียบร้อย":28,"รอทีมพัฒนา":14,"ยกเลิก":8,"รอ compile":4,"ส่งกลับนักพัฒนา":2},
+  defectColumns: [],
   defectList: [],
   defect_system: {"one stop service (สั่งยา)":13,"ภาพรวมระบบ":13,"การตั้งค่าระบบ":9,"บัญชี 1":8,"ส่งออกข้อมูล":7,"one stop service (คัดกรอง)":7,"one stop service (หัตถการ)":6,"one stop service (งานส่งเสริม)":6},
   defect_urgency: {"ด่วน":42,"ปกติ":106},
@@ -390,6 +488,12 @@ export default function App() {
   const [prodSheetUrl, setProdSheetUrl] = useState(PROD_SHEET_DEFAULT_URL)
   const prodAutoRefreshRef = useRef(null)
   const prodCountdownRef = useRef(null)
+  const [defectLoading, setDefectLoading] = useState(false)
+  const [defectError, setDefectError] = useState('')
+  const [defectCountdown, setDefectCountdown] = useState(DEFECT_REFRESH_MS / 1000)
+  const [defectSheetUrl, setDefectSheetUrl] = useState(DEFECT_SHEET_DEFAULT_URL)
+  const defectAutoRefreshRef = useRef(null)
+  const defectCountdownRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
   const [page, setPage] = useState('overview')
@@ -464,7 +568,6 @@ export default function App() {
 
   useEffect(() => {
     loadProdSheet()
-    // auto-refresh ทุก 10 นาที
     prodAutoRefreshRef.current = setInterval(() => {
       loadProdSheet()
       setProdCountdown(PROD_REFRESH_MS / 1000)
@@ -473,6 +576,45 @@ export default function App() {
     return () => {
       clearInterval(prodAutoRefreshRef.current)
       clearInterval(prodCountdownRef.current)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadDefectSheet = useCallback((urlOverride) => {
+    const exportUrl = getSheetExportUrl(urlOverride || defectSheetUrl)
+    if (!exportUrl) { setDefectError('URL ไม่ถูกต้อง'); return }
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 20000)
+    setDefectLoading(true)
+    setDefectError('')
+    fetch(exportUrl, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer() })
+      .then(ab => {
+        clearTimeout(timer)
+        const defectData = parseDefectSheetOnly(ab)
+        // เขียนทับเฉพาะเมื่อ parse ได้ข้อมูลจริง
+        if (defectData.defectList.length > 0 || defectData.defectColumns.length > 0) {
+          setData(prev => ({ ...prev, ...defectData }))
+        } else {
+          console.warn('⚠️ parseDefectSheetOnly returned empty — ไม่เขียนทับ default data')
+        }
+      })
+      .catch(e => {
+        clearTimeout(timer)
+        setDefectError(e.name === 'AbortError' ? 'หมดเวลา (timeout 20s)' : `โหลดไม่ได้: ${e.message}`)
+      })
+      .finally(() => setDefectLoading(false))
+  }, [defectSheetUrl])
+
+  useEffect(() => {
+    loadDefectSheet()
+    defectAutoRefreshRef.current = setInterval(() => {
+      loadDefectSheet()
+      setDefectCountdown(DEFECT_REFRESH_MS / 1000)
+    }, DEFECT_REFRESH_MS)
+    defectCountdownRef.current = setInterval(() => setDefectCountdown(c => c <= 1 ? DEFECT_REFRESH_MS / 1000 : c - 1), 1000)
+    return () => {
+      clearInterval(defectAutoRefreshRef.current)
+      clearInterval(defectCountdownRef.current)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -495,6 +637,11 @@ export default function App() {
       clearInterval(countdownRef.current)
     }
   }, [autoRefresh, handleGSheet])
+
+  // โหลด defect sheet ใหม่ทันทีเมื่อเปิดหน้า defect
+  useEffect(() => {
+    if (page === 'defect') loadDefectSheet()
+  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ปิด popup เมื่อกด Escape
   useEffect(() => {
@@ -605,6 +752,11 @@ export default function App() {
               prodLoading, prodError, prodCountdown,
               prodSheetUrl, setProdSheetUrl,
               onRetryProd: loadProdSheet,
+            } : {})}
+            {...(page === 'defect' ? {
+              defectLoading, defectError, defectCountdown,
+              defectSheetUrl, setDefectSheetUrl,
+              onRetryDefect: loadDefectSheet,
             } : {})}
           />
         </div>

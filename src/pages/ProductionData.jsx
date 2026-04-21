@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend } from 'recharts'
+import * as XLSX from 'xlsx'
 
 const REGION_NAMES = {
   1:'เชียงใหม่', 2:'พิษณุโลก', 3:'นครสวรรค์', 4:'สระบุรี',
@@ -49,10 +50,13 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
   const [provRegion, setProvRegion] = useState('')
   const [provMinPct, setProvMinPct] = useState('')
   const [showAllProv, setShowAllProv] = useState(false)
+  const [showZeroProv, setShowZeroProv] = useState(false)
   const [hoveredProv, setHoveredProv] = useState(null)
   const [simSelected, setSimSelected] = useState([]) // จังหวัดที่เลือกใน simulator
   const [simSearch, setSimSearch] = useState('')
   const [simTarget, setSimTarget] = useState('80') // % เป้าหมาย
+  const [exportProvince, setExportProvince] = useState('__all__')
+  const [expandedPilot, setExpandedPilot] = useState({})
 
   const availableRegions = [...new Set(productionVisits.map(h => h.region))].sort((a, b) => a - b)
 
@@ -127,7 +131,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
     installedByProv[p] = (installedByProv[p] || 0) + 1
     if (!prodSet.has(parseInt(r.hospcode, 10))) {
       if (!notUsingByProv[p]) notUsingByProv[p] = []
-      notUsingByProv[p].push({ hospcode: r.hospcode, name: r.name || '', remark: r.remark || '' })
+      notUsingByProv[p].push({ hospcode: r.hospcode, name: r.name || '', remark: r.remark || '', responsible: r.responsible || '' })
     }
   })
 
@@ -140,11 +144,18 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
     provMap[h.province].total  += h.total
     if (h.region) provMap[h.province].regions.add(h.region)
   })
-  const allProvRanked = Object.entries(provMap).sort((a, b) => {
+  // รวมจังหวัดที่มี 0 usage (ติดตั้งแล้วแต่ไม่ส่งข้อมูลเลย)
+  const zeroProvEntries = Object.keys(installedByProv)
+    .filter(p => !provMap[p])
+    .map(p => [p, { count: 0, latest: 0, total: 0, regions: new Set() }])
+  const allProvRankedBase = Object.entries(provMap).sort((a, b) => {
     const pctA = installedByProv[a[0]] > 0 ? a[1].count / installedByProv[a[0]] : 0
     const pctB = installedByProv[b[0]] > 0 ? b[1].count / installedByProv[b[0]] : 0
     return pctB - pctA
   })
+  const allProvRanked = showZeroProv
+    ? [...allProvRankedBase, ...zeroProvEntries]
+    : allProvRankedBase
   const provFiltered = (() => {
     let list = allProvRanked
     if (provRegion) list = list.filter(([, s]) => s.regions.has(Number(provRegion)))
@@ -364,11 +375,29 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                   {/* ติดตั้งแล้ว + ใช้งาน */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {[
-                      { icon: '✅', label: 'ติดตั้งแล้ว (ดำเนินการแล้ว)', val: installedTotal, color: '#2563eb', bg: '#dbeafe' },
-                      { icon: '🟢', label: 'ใช้งาน', val: installedUsing, color: '#10b981', bg: '#dcfce7' },
+                      {
+                        icon: (
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="11" fill="#2563eb" opacity="0.15"/>
+                            <circle cx="12" cy="12" r="11" stroke="#2563eb" strokeWidth="1.5"/>
+                            <path d="M7 12.5l3.5 3.5 6.5-7" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ),
+                        label: 'ติดตั้งแล้ว (ดำเนินการแล้ว)', val: installedTotal, color: '#2563eb', bg: '#dbeafe',
+                      },
+                      {
+                        icon: (
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="11" fill="#10b981" opacity="0.15"/>
+                            <circle cx="12" cy="12" r="11" stroke="#10b981" strokeWidth="1.5"/>
+                            <path d="M8 13l2-4 2.5 5 2-3 1.5 2" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ),
+                        label: 'ใช้งาน', val: installedUsing, color: '#10b981', bg: '#dcfce7',
+                      },
                     ].map((k, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: k.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${k.color}33` }}>
-                        <span style={{ fontSize: 18 }}>{k.icon}</span>
+                        <span style={{ flexShrink: 0 }}>{k.icon}</span>
                         <div>
                           <div style={{ fontSize: 20, fontWeight: 800, color: k.color }}>{fmt(k.val)} <span style={{ fontSize: 12, fontWeight: 600 }}>แห่ง</span></div>
                           <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{k.label}</div>
@@ -380,7 +409,13 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                   {/* ไม่มีข้อมูล */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fef3c7', borderRadius: 8, padding: '10px 14px', border: '1px solid #f59e0b33' }}>
-                      <span style={{ fontSize: 18 }}>⚪</span>
+                      <span style={{ flexShrink: 0 }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="11" fill="#f59e0b" opacity="0.15"/>
+                          <circle cx="12" cy="12" r="11" stroke="#f59e0b" strokeWidth="1.5"/>
+                          <path d="M12 7v5.5l3 2" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </span>
                       <div>
                         <div style={{ fontSize: 20, fontWeight: 800, color: '#f59e0b' }}>{fmt(installedNotUsing)} <span style={{ fontSize: 12, fontWeight: 600 }}>แห่ง</span></div>
                         <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>ไม่มีข้อมูล</div>
@@ -628,6 +663,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                 </div>
               )
             })()}
+
           </div>
         </>
       )}
@@ -635,6 +671,50 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
       {/* จังหวัดนำร่อง */}
       {(() => {
         const PILOT = ['เพชรบุรี', 'นครปฐม', 'นนทบุรี', 'สมุทรปราการ']
+
+        const exportPilotExcel = () => {
+          const wb = XLSX.utils.book_new()
+
+          // Sheet 1: สรุปภาพรวม
+          const summaryRows = PILOT.map(prov => {
+            const s = provMap[prov] || { count: 0, latest: 0, total: 0 }
+            const instProv = installedByProv[prov] || 0
+            const notUsing = notUsingByProv[prov] || []
+            const usePct = instProv > 0 ? Math.round((s.count / instProv) * 100) : 0
+            return {
+              'จังหวัด': prov,
+              'ติดตั้งแล้ว (แห่ง)': instProv,
+              'ใช้งาน (แห่ง)': s.count,
+              'ไม่มีข้อมูล (แห่ง)': notUsing.length,
+              '% ใช้งาน': usePct,
+              'OPD วันล่าสุด': s.latest,
+              'OPD รวม 3 วัน': s.total,
+            }
+          })
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'สรุปจังหวัดนำร่อง')
+
+          // Sheet 2: รายละเอียด รพ.สต. ที่ไม่ใช้งาน
+          const detailRows = []
+          PILOT.forEach(prov => {
+            const notUsing = notUsingByProv[prov] || []
+            notUsing.forEach(h => {
+              detailRows.push({
+                'จังหวัด': prov,
+                'รหัส รพ.สต.': h.hospcode,
+                'ชื่อหน่วยบริการ': h.name,
+                'ผู้รับผิดชอบ': h.responsible,
+                'หมายเหตุ': h.remark,
+              })
+            })
+          })
+          if (detailRows.length > 0) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), 'ไม่ใช้งาน-รายละเอียด')
+          }
+
+          const today = new Date().toISOString().slice(0, 10)
+          XLSX.writeFile(wb, `pilot_provinces_${today}.xlsx`)
+        }
+
         const pilotData = PILOT.map(prov => {
           const s = provMap[prov] || { count: 0, latest: 0, total: 0 }
           const instProv = installedByProv[prov] || 0
@@ -652,7 +732,19 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                   <div className="chart-title">เพชรบุรี · นครปฐม · นนทบุรี · สมุทรปราการ</div>
                   <div className="chart-sub">ใช้งาน = มี OPD Visit &gt; 0 ใน 3 วันล่าสุด</div>
                 </div>
-                <span className="chart-badge">Pilot</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={exportPilotExcel}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      padding: '5px 14px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      background: '#10b981', color: '#fff', border: '1px solid #059669',
+                    }}
+                  >
+                    📥 Export Excel
+                  </button>
+                  <span className="chart-badge">Pilot</span>
+                </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '10px 32px' }}>
                 {pilotData.map(({ prov, s, instProv, usePct, pctColor }) => (
@@ -694,6 +786,60 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                   </div>
                 ))}
               </div>
+
+              {/* สรุปรายละเอียดที่ไม่ใช้งานแยกจังหวัดนำร่อง */}
+              {PILOT.some(p => (notUsingByProv[p] || []).length > 0) && (
+                <div style={{ marginTop: 18, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#92400e', marginBottom: 10 }}>
+                    ⚠️ รายชื่อ รพ.สต. ที่ติดตั้งแล้วแต่ยังไม่มีข้อมูล
+                  </div>
+                  {PILOT.map(prov => {
+                    const notUsing = notUsingByProv[prov] || []
+                    if (notUsing.length === 0) return null
+                    const isOpen = !!expandedPilot[prov]
+                    return (
+                      <div key={prov} style={{ marginBottom: 8 }}>
+                        <button
+                          onClick={() => setExpandedPilot(prev => ({ ...prev, [prov]: !prev[prov] }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: isOpen ? '#fffbeb' : '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', textAlign: 'left' }}
+                        >
+                          <span style={{ fontSize: 12, color: '#64748b' }}>{isOpen ? '▾' : '▸'}</span>
+                          <span style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 5, padding: '1px 8px', fontSize: 11, color: '#92400e', fontWeight: 800 }}>{prov}</span>
+                          <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700 }}>ไม่มีข้อมูล {notUsing.length} แห่ง</span>
+                        </button>
+                        {isOpen && (
+                          <div style={{ overflowX: 'auto', maxHeight: 260, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 7px 7px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                              <thead style={{ position: 'sticky', top: 0 }}>
+                                <tr style={{ background: '#f1f5f9' }}>
+                                  <th style={{ textAlign: 'left', padding: '5px 8px', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 700, width: 80 }}>รหัส รพ.</th>
+                                  <th style={{ textAlign: 'left', padding: '5px 8px', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 700 }}>ชื่อหน่วยบริการ</th>
+                                  <th style={{ textAlign: 'left', padding: '5px 8px', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 700, width: 140 }}>ผู้รับผิดชอบ</th>
+                                  <th style={{ textAlign: 'left', padding: '5px 8px', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 700, width: 200 }}>หมายเหตุ</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {notUsing.map((h, idx) => (
+                                  <tr key={h.hospcode} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                                    <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9', fontFamily: 'monospace', fontWeight: 600, color: '#2563eb' }}>{h.hospcode}</td>
+                                    <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9', color: 'var(--text-primary)' }}>{h.name || '—'}</td>
+                                    <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9', color: h.responsible ? '#059669' : '#94a3b8', fontWeight: h.responsible ? 600 : 400 }}>
+                                      {h.responsible || <span style={{ color: '#cbd5e1' }}>—</span>}
+                                    </td>
+                                    <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9', color: h.remark ? '#475569' : '#94a3b8' }}>
+                                      {h.remark || <span style={{ color: '#cbd5e1' }}>—</span>}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </>
         )
@@ -720,7 +866,16 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                 color: showAllProv ? '#fff' : '#475569',
                 border: `1px solid ${showAllProv ? '#1d4ed8' : '#e2e8f0'}`,
               }}
-            >{showAllProv ? `ทุกจังหวัด (${allProvRanked.length})` : 'Top 10'}</button>
+            >{showAllProv ? `ทุกจังหวัด (${allProvRankedBase.length})` : 'Top 10'}</button>
+            <button
+              onClick={() => setShowZeroProv(v => !v)}
+              style={{
+                padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                background: showZeroProv ? '#f59e0b' : '#f1f5f9',
+                color: showZeroProv ? '#fff' : '#475569',
+                border: `1px solid ${showZeroProv ? '#d97706' : '#e2e8f0'}`,
+              }}
+            >{showZeroProv ? `รวม 0% (${zeroProvEntries.length})` : 'รวม 0%'}</button>
             <select
               className="filter-select"
               value={provRegion}
@@ -750,6 +905,50 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
               onChange={e => setProvSearch(e.target.value)}
               style={{ width: 150 }}
             />
+            {/* Export ไม่ใช้งาน */}
+            {(() => {
+              const notUsingProvinces = Object.entries(notUsingByProv)
+                .filter(([, list]) => list.length > 0)
+                .sort((a, b) => b[1].length - a[1].length)
+              if (!notUsingProvinces.length) return null
+              const exportNotUsing = () => {
+                const rows = (exportProvince === '__all__'
+                  ? notUsingProvinces.flatMap(([prov, list]) => list.map(h => ({ ...h, province: prov })))
+                  : (notUsingByProv[exportProvince] || []).map(h => ({ ...h, province: exportProvince }))
+                ).map(h => ({
+                  'จังหวัด': h.province,
+                  'รหัส รพ.สต.': h.hospcode,
+                  'ชื่อหน่วยบริการ': h.name,
+                  'ผู้รับผิดชอบ': h.responsible,
+                  'หมายเหตุ': h.remark,
+                }))
+                if (!rows.length) return
+                const wb2 = XLSX.utils.book_new()
+                XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(rows), 'ไม่ใช้งาน')
+                const label = exportProvince === '__all__' ? 'ทุกจังหวัด' : exportProvince
+                XLSX.writeFile(wb2, `not_using_${label}_${new Date().toISOString().slice(0,10)}.xlsx`)
+              }
+              return (
+                <>
+                  <select
+                    value={exportProvince}
+                    onChange={e => setExportProvince(e.target.value)}
+                    style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, color: 'var(--text-primary)', background: 'var(--bg-main)', cursor: 'pointer' }}
+                  >
+                    <option value="__all__">ทุกจังหวัด ({notUsingProvinces.reduce((a,[,l])=>a+l.length,0)} แห่ง)</option>
+                    {notUsingProvinces.map(([prov, list]) => (
+                      <option key={prov} value={prov}>{prov} ({list.length} แห่ง)</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={exportNotUsing}
+                    style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', background: '#10b981', color: '#fff', border: '1px solid #059669', whiteSpace: 'nowrap' }}
+                  >
+                    📥 Export
+                  </button>
+                </>
+              )
+            })()}
           </div>
         </div>
         {provFiltered.length === 0 ? (

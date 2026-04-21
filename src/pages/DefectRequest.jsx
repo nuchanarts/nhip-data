@@ -1,12 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 
 const STATUS_COLOR = {
-  'ดำเนินการแล้ว':'#10b981','แก้ไขเรียบร้อย':'#10b981','จัดทำ MANTIS':'#2563eb','รอแจ้งทีมพัฒนา':'#f59e0b',
-  'รอทีมพัฒนา':'#f97316','ยกเลิก':'#94a3b8','รอ compile':'#7c3aed','ส่งกลับนักพัฒนา':'#ef4444',
-  'จัดทำ Taiga':'#06b6d4','กำลังดำเนินการ':'#f59e0b','รอดำเนินการ':'#e2e8f0'
+  // สถานะ column จริง
+  'เสร็จแล้ว':'#10b981','แก้ไขเรียบร้อย':'#10b981','ดำเนินการแล้ว':'#10b981','เสร็จสิ้น':'#10b981',
+  'กำลังดำเนินการ':'#f59e0b','อยู่ระหว่างดำเนินการ':'#f59e0b','รอดำเนินการ':'#94a3b8',
+  'รอทีมพัฒนา':'#f97316','รอแจ้งทีมพัฒนา':'#f59e0b','รอ compile':'#7c3aed',
+  'จัดทำ MANTIS':'#2563eb','จัดทำ Taiga':'#06b6d4','ส่งกลับนักพัฒนา':'#ef4444','ยกเลิก':'#94a3b8',
 }
-const URG_COLOR = {'ด่วน':'#ef4444','ปกติ':'#64748b','ไม่ด่วน':'#64748b'}
+const URG_COLOR = {
+  'ด่วนมาก':'#ef4444','ด่วน':'#f97316','ปกติ':'#64748b','ไม่ด่วน':'#94a3b8','ต่ำ':'#94a3b8',
+}
 const fmt = n => Number(n).toLocaleString()
 const TT = ({ active, payload, label }) => active && payload?.length ? (
   <div className="tt"><div className="tt-label">{label}</div>
@@ -15,12 +19,16 @@ const TT = ({ active, payload, label }) => active && payload?.length ? (
 
 const PAGE_SIZE = 20
 
-export default function DefectRequest({ data }) {
-  const { defect_status, defect_system, defect_urgency, defectList } = data
+export default function DefectRequest({ data, defectLoading, defectError, defectCountdown, defectSheetUrl, setDefectSheetUrl, onRetryDefect }) {
+  const { defect_status, defect_system, defect_urgency, defectList, defectColumns = [] } = data
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterUrgency, setFilterUrgency] = useState('')
   const [page, setPage] = useState(1)
+  const [showUrlEdit, setShowUrlEdit] = useState(false)
+  const [urlInput, setUrlInput] = useState(defectSheetUrl || '')
+  useEffect(() => { setUrlInput(defectSheetUrl || '') }, [defectSheetUrl])
+  const fmtCountdown = s => `${Math.floor((s||0)/60)}:${String((s||0)%60).padStart(2,'0')}`
 
   const ds = defect_status || {}
   const dsys = defect_system || {}
@@ -39,6 +47,52 @@ export default function DefectRequest({ data }) {
   return (
     <div className="page">
       <div className="page-title">🐞 Defect & Request Tracking</div>
+
+      {/* Status bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        {defectLoading ? (
+          <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, background: '#dbeafe', border: '1px solid #bfdbfe', borderRadius: 6, padding: '3px 10px' }}>⏳ กำลังโหลด...</span>
+        ) : defectError ? (
+          <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px' }}>⚠️ {defectError}</span>
+        ) : (
+          <span style={{ fontSize: 12, color: '#10b981', fontWeight: 600, background: '#dcfce7', border: '1px solid #86efac', borderRadius: 6, padding: '3px 10px' }}>✅ โหลดสำเร็จ</span>
+        )}
+        {!defectLoading && defectCountdown != null && (
+          <span style={{ fontSize: 11, color: '#64748b' }}>🔁 Auto refresh ใน {fmtCountdown(defectCountdown)}</span>
+        )}
+        <button
+          onClick={() => onRetryDefect && onRetryDefect()}
+          disabled={defectLoading}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 14px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: defectLoading ? 'not-allowed' : 'pointer', background: defectLoading ? '#f1f5f9' : '#2563eb', color: defectLoading ? '#94a3b8' : '#fff', border: '1px solid ' + (defectLoading ? '#e2e8f0' : '#1d4ed8') }}
+        >🔄 {defectLoading ? 'กำลังโหลด...' : 'Refresh'}</button>
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => { setShowUrlEdit(v => !v); setUrlInput(defectSheetUrl || '') }}
+            style={{ padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
+          >🔗 เปลี่ยน URL</button>
+          {showUrlEdit && (
+            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 100, minWidth: 380, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>🔗 Google Sheets URL</div>
+              <input
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12, boxSizing: 'border-box', marginBottom: 8, color: 'var(--text-primary)', background: 'var(--bg-main)' }}
+                autoFocus
+              />
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>⚠️ Sheet ต้องเปิดเป็น Public (Anyone with link)</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => { if (setDefectSheetUrl) setDefectSheetUrl(urlInput); setShowUrlEdit(false); onRetryDefect && onRetryDefect(urlInput) }}
+                  style={{ flex: 1, padding: '6px 0', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}
+                >บันทึกและโหลด</button>
+                <button onClick={() => setShowUrlEdit(false)} style={{ padding: '6px 14px', borderRadius: 6, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer', fontSize: 12 }}>ยกเลิก</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="page-desc">ติดตาม Bug, Feature Request และสถานะการแก้ไขทั้งหมด</div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginTop:20}}>
@@ -122,33 +176,61 @@ export default function DefectRequest({ data }) {
       {/* Progress bar by status */}
       <div className="section-label" style={{marginTop:24}}>รายละเอียดสถานะ</div>
       <div className="chart-card">
-        <div className="prog-list">
-          {statusData.map(item=>(
-            <div key={item.name} className="prog-item">
-              <div className="prog-top">
-                <span className="prog-name">{item.name}</span>
-                <span className="prog-val" style={{color:item.color}}>{fmt(item.value)} <span style={{color:'var(--text-muted)',fontSize:11}}>({((item.value/total)*100).toFixed(1)}%)</span></span>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:12}}>
+          {statusData.sort((a,b)=>b.value-a.value).map((item, idx)=>{
+            const pct = (item.value/total)*100
+            return (
+              <div key={item.name} style={{
+                background:'var(--bg-main)', borderRadius:10,
+                border:`1px solid ${item.color}33`,
+                padding:'12px 14px',
+                boxShadow:`0 1px 4px ${item.color}18`,
+                transition:'box-shadow 0.2s',
+              }}>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8}}>
+                  <div style={{display:'flex', alignItems:'center', gap:8}}>
+                    <span style={{
+                      width:10, height:10, borderRadius:'50%',
+                      background:item.color, flexShrink:0, display:'inline-block',
+                      boxShadow:`0 0 6px ${item.color}88`
+                    }}/>
+                    <span style={{fontSize:12, fontWeight:700, color:'var(--text-primary)'}}>{item.name}</span>
+                  </div>
+                  <span style={{
+                    fontSize:11, fontWeight:800, color:'#fff',
+                    background:item.color, borderRadius:20,
+                    padding:'2px 10px', letterSpacing:0.3,
+                  }}>{pct.toFixed(1)}%</span>
+                </div>
+                {/* progress bar */}
+                <div style={{height:7, background:'var(--border)', borderRadius:4, overflow:'hidden', marginBottom:6}}>
+                  <div style={{
+                    height:'100%', width:`${pct}%`, borderRadius:4,
+                    background:`linear-gradient(90deg, ${item.color}cc, ${item.color})`,
+                    transition:'width 0.6s ease',
+                  }}/>
+                </div>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <span style={{fontSize:18, fontWeight:800, color:item.color}}>{fmt(item.value)}</span>
+                  <span style={{fontSize:10, color:'var(--text-muted)', fontWeight:500}}>จาก {fmt(total)} รายการ</span>
+                </div>
               </div>
-              <div className="prog-track">
-                <div className="prog-fill" style={{width:`${(item.value/total)*100}%`,background:item.color}}/>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
-      {/* Detail Table */}
+      {/* Detail Table — dynamic columns + resizable */}
       {(() => {
-        const uniqueStatuses = [...new Set((defectList||[]).map(r=>r.status).filter(Boolean))]
+        const cols = defectColumns.length > 0 ? defectColumns : ['วันที่','ระบบงาน','สถานะระบบ','ด่วน/ไม่ด่วน','สถานะดำเนินการ','หัวข้อ/รายละเอียด','สถานะทำ Mantis','ผู้รับผิดชอบ']
+        const uniqueStatuses = [...new Set((defectList||[]).map(r=>r.__status).filter(Boolean))]
+        const uniqueUrgency  = [...new Set((defectList||[]).map(r=>r.__urgency).filter(Boolean))]
         const filtered = (defectList||[]).filter(r => {
-          if (filterStatus  && r.status  !== filterStatus)  return false
-          if (filterUrgency && r.urgency !== filterUrgency) return false
+          if (filterStatus  && r.__status  !== filterStatus)  return false
+          if (filterUrgency && r.__urgency !== filterUrgency) return false
           if (search.trim()) {
             const q = search.toLowerCase()
-            return (r.detail||'').toLowerCase().includes(q)
-              || (r.system||'').toLowerCase().includes(q)
-              || (r.responsible||'').toLowerCase().includes(q)
-              || (r.mantis||'').toLowerCase().includes(q)
+            return cols.some(col => (r[col]||'').toLowerCase().includes(q))
           }
           return true
         })
@@ -157,68 +239,74 @@ export default function DefectRequest({ data }) {
         return (
           <>
             <div className="section-label" style={{marginTop:24}}>📋 รายการทั้งหมด</div>
-            <div className="chart-card">
-              {/* Filters */}
-              <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-                <input className="filter-input" placeholder="🔍 ค้นหา รายละเอียด / ระบบ / ผู้รับผิดชอบ..."
-                  value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} style={{width:280}}/>
+            <div className="chart-card" style={{padding:'14px 14px 0'}}>
+              <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+                <input className="filter-input" placeholder="🔍 ค้นหาทุก column..."
+                  value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} style={{width:260}}/>
                 <select className="filter-select" value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(1)}}>
                   <option value="">ทุกสถานะ</option>
                   {uniqueStatuses.map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
                 <select className="filter-select" value={filterUrgency} onChange={e=>{setFilterUrgency(e.target.value);setPage(1)}}>
-                  <option value="">ด่วน/ปกติ</option>
-                  <option value="ด่วน">ด่วน</option>
-                  <option value="ปกติ">ปกติ</option>
+                  <option value="">ทุกระดับ</option>
+                  {uniqueUrgency.map(u=><option key={u} value={u}>{u}</option>)}
                 </select>
                 <span style={{fontSize:12,color:'var(--text-muted)',marginLeft:'auto'}}>{fmt(filtered.length)} รายการ</span>
               </div>
 
-              {/* Table */}
-              <div style={{overflowX:'auto'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
-                  <thead>
-                    <tr style={{background:'var(--bg-secondary)',borderBottom:'2px solid var(--border)'}}>
-                      {['#','วันที่เจอปัญหา','ระบบงาน','สถานะระบบ','ด่วน/ไม่ด่วน','สถานะดำเนินการ','หัวข้อ/รายละเอียด','สถานะทำ Mantis','ผู้รับผิดชอบ'].map(h=>(
-                        <th key={h} style={{padding:'8px 12px',textAlign:'left',fontWeight:600,
-                          color:'var(--text-secondary)',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>
+              <div style={{overflowX:'auto', overflowY:'auto', maxHeight:'60vh', borderRadius:8, border:'1px solid var(--border)'}}>
+                <table style={{borderCollapse:'collapse',fontSize:12,tableLayout:'fixed',width:'max-content',minWidth:'100%'}}>
+                  <colgroup>
+                    <col style={{width:40}}/>
+                    {cols.map(col => (
+                      <col key={col} style={{width: col.length > 12 ? 160 : col.length > 6 ? 130 : 100}}/>
+                    ))}
+                  </colgroup>
+                  <thead style={{position:'sticky',top:0,zIndex:10}}>
+                    <tr style={{background:'#334155',borderBottom:'2px solid var(--border)'}}>
+                      <th style={{padding:'8px 10px',textAlign:'left',color:'#e2e8f0',fontSize:11,whiteSpace:'nowrap',fontWeight:700,position:'relative',overflow:'hidden',resize:'horizontal'}}>#</th>
+                      {cols.map(col => (
+                        <th key={col} style={{
+                          padding:'8px 10px',textAlign:'left',color:'#e2e8f0',fontSize:11,
+                          whiteSpace:'nowrap',fontWeight:700,
+                          position:'relative',overflow:'hidden',
+                          resize:'horizontal',         // ← ลากขยายได้
+                          cursor:'col-resize',
+                          borderRight:'1px solid #475569',
+                          userSelect:'none',
+                        }}>
+                          {col}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {paged.length === 0 && (
-                      <tr><td colSpan={9} style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>ไม่พบข้อมูล</td></tr>
+                      <tr><td colSpan={cols.length+1} style={{textAlign:'center',padding:32,color:'var(--text-muted)'}}>ไม่พบข้อมูล</td></tr>
                     )}
                     {paged.map((r,i)=>(
                       <tr key={i} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'var(--bg-secondary)'}}>
-                        <td style={{padding:'7px 12px',color:'var(--text-muted)',fontSize:11}}>{(page-1)*PAGE_SIZE+i+1}</td>
-                        <td style={{padding:'7px 12px',whiteSpace:'nowrap',color:'var(--text-secondary)'}}>{r.date||'—'}</td>
-                        <td style={{padding:'7px 12px',fontWeight:500,color:'var(--text-primary)',maxWidth:140}}>{r.system||'—'}</td>
-                        <td style={{padding:'7px 12px',color:'var(--text-secondary)'}}>{r.sys_status||'—'}</td>
-                        <td style={{padding:'7px 12px',textAlign:'center'}}>
-                          {r.urgency ? <span style={{
-                            background:(URG_COLOR[r.urgency]||'#94a3b8')+'22',
-                            color:URG_COLOR[r.urgency]||'#94a3b8',
-                            padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700
-                          }}>{r.urgency}</span> : '—'}
-                        </td>
-                        <td style={{padding:'7px 12px',textAlign:'center'}}>
-                          {r.status ? <span style={{
-                            background:(STATUS_COLOR[r.status]||'#94a3b8')+'22',
-                            color:STATUS_COLOR[r.status]||'#94a3b8',
-                            padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:600,whiteSpace:'nowrap'
-                          }}>{r.status}</span> : '—'}
-                        </td>
-                        <td style={{padding:'7px 12px',color:'var(--text-primary)',maxWidth:260,lineHeight:1.4}}>{r.detail||'—'}</td>
-                        <td style={{padding:'7px 12px',color:'var(--text-secondary)',whiteSpace:'nowrap'}}>{r.mantis||'—'}</td>
-                        <td style={{padding:'7px 12px',fontWeight:500,color:'var(--text-secondary)',whiteSpace:'nowrap'}}>{r.responsible||'—'}</td>
+                        <td style={{padding:'6px 10px',color:'var(--text-muted)',fontSize:11,whiteSpace:'nowrap'}}>{(page-1)*PAGE_SIZE+i+1}</td>
+                        {cols.map(col => {
+                          const val = r[col] || ''
+                          const isStatus  = STATUS_COLOR[val] && val
+                          const isUrgency = !isStatus && URG_COLOR[val] && val
+                          return (
+                            <td key={col} style={{padding:'6px 10px',color:'var(--text-primary)',lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:0}}>
+                              {isStatus ? (
+                                <span style={{background:(STATUS_COLOR[val])+'22',color:STATUS_COLOR[val],padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>{val}</span>
+                              ) : isUrgency ? (
+                                <span style={{background:(URG_COLOR[val])+'22',color:URG_COLOR[val],padding:'2px 8px',borderRadius:5,fontSize:11,fontWeight:700}}>{val}</span>
+                              ) : val ? <span title={val}>{val}</span> : <span style={{color:'#cbd5e1'}}>—</span>}
+                            </td>
+                          )
+                        })}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:14}}>
                   <button className="page-btn" onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}>←</button>
