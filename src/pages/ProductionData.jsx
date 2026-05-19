@@ -167,10 +167,17 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
   hisInstalledRows.forEach(r => {
     const p = r.province?.includes('-') ? r.province.split('-').slice(1).join('-') : (r.province || '')
     if (!p) return
-    if (!hisProvMap[p]) hisProvMap[p] = { province: p, total: 0, firstInstall: null, firstInstallStr: '', HOSxP: 0, JHCIS: 0, 'MY PCU': 0, 'อื่น ๆ': 0, 'ไม่ระบุ': 0 }
+    if (!hisProvMap[p]) hisProvMap[p] = {
+      province: p, total: 0, firstInstall: null, firstInstallStr: '',
+      HOSxP: 0, JHCIS: 0, 'MY PCU': 0, 'อื่น ๆ': 0, 'ไม่ระบุ': 0,
+      // ใช้งานจริง = ติดตั้งแล้ว & มี OPD visit ย้อนหลัง 3 วัน (อยู่ใน prodSet)
+      HOSxP_use: 0, JHCIS_use: 0, 'MY PCU_use': 0, 'อื่น ๆ_use': 0, 'ไม่ระบุ_use': 0,
+    }
     const o = hisProvMap[p]
+    const hk = normHis(r.his)
     o.total++
-    o[normHis(r.his)]++
+    o[hk]++
+    if (prodSet.has(parseInt(r.hospcode, 10))) o[hk + '_use']++
     const dn = parseThDate(r.install_date)
     if (dn != null && (o.firstInstall == null || dn < o.firstInstall)) { o.firstInstall = dn; o.firstInstallStr = r.install_date }
   })
@@ -486,10 +493,13 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
               const sum = k => fl.reduce((a, o) => a + (o[k] || 0), 0)
               return (
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                  {fl.length} จังหวัด · HOSxP {fmt(sum('HOSxP'))} · JHCIS {fmt(sum('JHCIS'))} · MY PCU {fmt(sum('MY PCU'))} แห่ง
+                  {fl.length} จังหวัด · HOSxP {fmt(sum('HOSxP'))}/<b style={{ color: '#16a34a' }}>{fmt(sum('HOSxP_use'))}</b> · JHCIS {fmt(sum('JHCIS'))}/<b style={{ color: '#16a34a' }}>{fmt(sum('JHCIS_use'))}</b> · MY PCU {fmt(sum('MY PCU'))}/<b style={{ color: '#16a34a' }}>{fmt(sum('MY PCU_use'))}</b> (ติดตั้ง/ใช้จริง)
                 </span>
               )
             })()}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+            แต่ละช่อง HIS = <b style={{ color: 'var(--text-primary)' }}>ติดตั้งแล้ว</b> / <b style={{ color: '#16a34a' }}>ใช้งานจริง</b> (มี OPD visit ย้อนหลัง 3 วัน)
           </div>
           <div className="chart-card" style={{ marginBottom: 22, padding: 0, overflow: 'auto', maxHeight: 460 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -507,11 +517,17 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                   <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '6px 12px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{o.province}</td>
                     <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>{fmt(o.total)}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o.HOSxP ? '#1d4ed8' : '#cbd5e1' }}>{o.HOSxP || '-'}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o.JHCIS ? '#6d28d9' : '#cbd5e1' }}>{o.JHCIS || '-'}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o['MY PCU'] ? '#0e7490' : '#cbd5e1' }}>{o['MY PCU'] || '-'}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o['อื่น ๆ'] ? '#b45309' : '#cbd5e1' }}>{o['อื่น ๆ'] || '-'}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{o['ไม่ระบุ'] || '-'}</td>
+                    {[['HOSxP', '#1d4ed8'], ['JHCIS', '#6d28d9'], ['MY PCU', '#0e7490'], ['อื่น ๆ', '#b45309'], ['ไม่ระบุ', '#64748b']].map(([k, col]) => (
+                      <td key={k} style={{ padding: '6px 12px', textAlign: 'center' }}>
+                        {o[k]
+                          ? <span style={{ whiteSpace: 'nowrap' }}>
+                              <b style={{ color: col }}>{o[k]}</b>
+                              <span style={{ color: '#94a3b8' }}> / </span>
+                              <b style={{ color: '#16a34a' }}>{o[k + '_use'] || 0}</b>
+                            </span>
+                          : <span style={{ color: '#cbd5e1' }}>-</span>}
+                      </td>
+                    ))}
                     <td style={{ padding: '6px 12px', textAlign: 'center' }}>
                       <span style={{ background: (HIS_COLOR[o.topHis] || '#94a3b8') + '22', color: HIS_COLOR[o.topHis] || '#475569', padding: '1px 8px', borderRadius: 4, fontWeight: 700 }}>{o.topHis}</span>
                     </td>
