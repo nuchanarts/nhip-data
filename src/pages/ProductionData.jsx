@@ -124,12 +124,15 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
 
   // ยอดติดตั้งแล้วแยกจังหวัด (normalize ชื่อ "50-เชียงใหม่" → "เชียงใหม่")
   const installedByProv = {}
+  const usingByProv = {}     // จังหวัด → จำนวนที่ติดตั้งแล้ว & มี OPD Visit ใน 3 วันย้อนหลัง
   const notUsingByProv = {}  // province → [{hospcode, name}]
   installList.filter(r => r.progress === 'ดำเนินการแล้ว').forEach(r => {
     const p = r.province?.includes('-') ? r.province.split('-').slice(1).join('-') : (r.province || '')
     if (!p) return
     installedByProv[p] = (installedByProv[p] || 0) + 1
-    if (!prodSet.has(parseInt(r.hospcode, 10))) {
+    if (prodSet.has(parseInt(r.hospcode, 10))) {
+      usingByProv[p] = (usingByProv[p] || 0) + 1
+    } else {
       if (!notUsingByProv[p]) notUsingByProv[p] = []
       notUsingByProv[p].push({ hospcode: r.hospcode, name: r.name || '', remark: r.remark || '', responsible: r.responsible || '' })
     }
@@ -144,15 +147,20 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
     provMap[h.province].total  += h.total
     if (h.region) provMap[h.province].regions.add(h.region)
   })
-  // รวมจังหวัดที่มี 0 usage (ติดตั้งแล้วแต่ไม่ส่งข้อมูลเลย)
-  const zeroProvEntries = Object.keys(installedByProv)
-    .filter(p => !provMap[p])
-    .map(p => [p, { count: 0, latest: 0, total: 0, regions: new Set() }])
-  const allProvRankedBase = Object.entries(provMap).sort((a, b) => {
-    const pctA = installedByProv[a[0]] > 0 ? a[1].count / installedByProv[a[0]] : 0
-    const pctB = installedByProv[b[0]] > 0 ? b[1].count / installedByProv[b[0]] : 0
-    return pctB - pctA
-  })
+  // จัดอันดับจังหวัด: % ใช้งานจริง = (ติดตั้งแล้ว & มี OPD Visit 3 วันย้อนหลัง) ÷ ติดตั้งแล้ว
+  const provRankAll = Object.keys(installedByProv).map(p => {
+    const inst  = installedByProv[p]
+    const using = usingByProv[p] || 0
+    const pm    = provMap[p] || { latest: 0, total: 0, regions: new Set() }
+    return [p, {
+      count: using, installed: inst,
+      latest: pm.latest, total: pm.total, regions: pm.regions,
+      pct: inst > 0 ? using / inst : 0,
+    }]
+  }).sort((a, b) => b[1].pct - a[1].pct || b[1].count - a[1].count)
+  const allProvRankedBase = provRankAll.filter(([, s]) => s.count > 0)
+  // จังหวัดที่ติดตั้งแล้วแต่ไม่มีหน่วยใดใช้งานใน 3 วันย้อนหลัง (0%)
+  const zeroProvEntries = provRankAll.filter(([, s]) => s.count === 0)
   const allProvRanked = showZeroProv
     ? [...allProvRankedBase, ...zeroProvEntries]
     : allProvRankedBase
@@ -162,18 +170,11 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
     if (provSearch) list = list.filter(([p]) => p.includes(provSearch))
     if (provMinPct) {
       const min = Number(provMinPct)
-      list = list.filter(([p, s]) => {
-        const inst = installedByProv[p] || 0
-        if (inst === 0) return false
-        return Math.round((s.count / inst) * 100) >= min
-      })
+      list = list.filter(([, s]) => s.installed > 0 && Math.round(s.pct * 100) >= min)
     }
     return (provSearch || provRegion || provMinPct || showAllProv) ? list : list.slice(0, 10)
   })()
-  const maxProvCount = Math.max(
-    allProvRanked[0]?.[1].count || 1,
-    ...Object.values(installedByProv)
-  )
+  const maxProvCount = Math.max(1, ...Object.values(installedByProv))
 
   const filtered = productionVisits
     .filter(h => {
@@ -855,7 +856,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                 ? `${provRegion ? `เขต ${provRegion} · ` : ''}${provSearch ? `"${provSearch}" · ` : ''}${provFiltered.length} จังหวัด`
                 : 'Top 10 จังหวัด (เรียงตาม % ใช้งาน)'}
             </div>
-            <div className="chart-sub">นับจากหน่วยบริการที่มี OPD Visit &gt; 0 ใน 3 วันล่าสุด · ทั้งหมด {allProvRanked.length} จังหวัด</div>
+            <div className="chart-sub">% ใช้งานจริง = หน่วยที่ติดตั้งแล้ว &amp; มี OPD Visit ใน 3 วันย้อนหลัง ÷ ที่ติดตั้งไป · ทั้งหมด {allProvRanked.length} จังหวัด</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
             <button
@@ -1108,50 +1109,6 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
-
-      {/* Region summary cards */}
-      <div className="section-label">สรุปผลผลิตแยกเขต</div>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 22 }}>
-        {Object.entries(regionStats)
-          .sort((a, b) => Number(a[0]) - Number(b[0]))
-          .map(([r, s], i) => {
-            const isSelected = selectedRegion === r
-            return (
-              <div key={r}
-                onClick={() => { setSelectedRegion(isSelected ? '' : r); setPage(1) }}
-                style={{
-                  flex: '0 0 calc(25% - 8px)', minWidth: 160, padding: '12px 14px',
-                  background: isSelected ? '#eff6ff' : 'var(--bg-card)',
-                  border: isSelected ? '2px solid #2563eb' : '1px solid var(--border)',
-                  borderRadius: 10, cursor: 'pointer',
-                  boxShadow: isSelected ? '0 0 0 2px #bfdbfe' : '0 1px 3px rgba(0,0,0,0.06)',
-                }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{
-                    width: 28, height: 28, borderRadius: '50%',
-                    background: COLORS[i % COLORS.length], color: '#fff',
-                    fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                  }}>{r}</span>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>เขต {r}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{REGION_NAMES[Number(r)] || ''}</div>
-                  </div>
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: COLORS[i % COLORS.length] }}>{fmtK(s.latest)}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>OPD วันล่าสุด</div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {productionDates.map((d, di) => (
-                    <div key={di} style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: 9, color: 'var(--text-muted)', marginBottom: 2 }}>{d.split(' ').slice(0,2).join(' ')}</div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>{fmtK(s.byDate[di])}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6 }}>{s.count} หน่วยบริการ</div>
-              </div>
-            )
-          })}
       </div>
 
       {/* Table */}

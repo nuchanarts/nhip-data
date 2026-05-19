@@ -14,10 +14,12 @@ import Workload from './pages/Workload'
 import InstallerMgmt from './pages/InstallerMgmt'
 import HospList from './pages/HospList'
 import ProductionData from './pages/ProductionData'
+import RetroKey from './pages/RetroKey'
+import { useGlobalResizableColumns } from './hooks/useResizableColumns'
 import './index.css'
 
 const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1a6nP3FBPka-DJeEzUk40_XiNYch_Eym-/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
-const DEFECT_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1voV3mHQi7bH2PbBeWaVrk0EaUs-9BnqMpKc53oI__RE/edit?gid=0#gid=0'
+const DEFECT_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1voV3mHQi7bH2PbBeWaVrk0EaUs-9BnqMpKc53oI__RE/edit?usp=sharing'
 const DEFECT_REFRESH_MS = 10 * 60 * 1000 // 10 นาที
 
 function getSheetExportUrl(sheetUrl) {
@@ -38,7 +40,7 @@ const DEFECT_COLUMNS_ORDER = [
 ]
 
 function parseDefectSheetOnly(ab) {
-  const wb = XLSX.read(ab, { type: 'array' })
+  const wb = XLSX.read(ab, { type: 'array', cellDates: true })
   console.log('📋 Defect sheets:', wb.SheetNames)
 
   // หา sheet+row ที่มี column ตรงกับที่รู้จริง
@@ -222,6 +224,7 @@ function parseExcel(file) {
             status:      ['สถานะงาน','Job Status','สถานะ Job'],
             finish_date: ['วันที่เสร็จ','วันเสร็จ'],
             responsible: ['ผู้ติดตั้ง','ผู้รับผิดชอบ'],
+            his:         ['ระบบ HIS เดิม','HIS เดิม','ระบบ HIS','HIS'],
             summary:     ['สรุปรายงานติดตั้ง','สรุปรายงาน','รายงานติดตั้ง'],
             check_date:  ['วันที่ตรวจสอบ','วันตรวจสอบ'],
             remark:      ['หมายเหตุ','Remark'],
@@ -231,8 +234,8 @@ function parseExcel(file) {
           const idx = h5.findIndex(h => pats.some(p => h.includes(p)))
           return idx >= 0 ? idx : null
         }
-        // fallback index เดิม ถ้าหา header ไม่เจอ
-        const fb5 = { hospcode:0,region:1,name:2,province:3,amphoe:4,install_date:5,mig_start:6,mig_end:7,trans_start:8,trans_end:9,progress:10,status:11,finish_date:12,responsible:13,summary:14,check_date:15,remark:16,pm:17 }
+        // fallback index ตามโครงสร้าง sheet "ข้อมูลผู้ติดตั้ง" จริง (มีคอลัมน์ "ระบบ HIS เดิม" ที่ idx 14)
+        const fb5 = { hospcode:0,region:1,name:2,province:3,amphoe:4,install_date:5,mig_start:6,mig_end:7,trans_start:8,trans_end:9,progress:10,status:11,finish_date:12,responsible:13,his:14,summary:15,check_date:16,remark:17,pm:18 }
         const c5 = key => s5col(key) ?? fb5[key]
         console.log('📋 Sheet5 summary col:', c5('summary'), '| progress col:', c5('progress'), '| status col:', c5('status'))
 
@@ -277,6 +280,7 @@ function parseExcel(file) {
             status:      j,
             finish_date: r[c5('finish_date')] instanceof Date ? r[c5('finish_date')].toLocaleDateString('th-TH') : '',
             responsible: String(r[c5('responsible')]||''),
+            his:         String(r[c5('his')]||''),
             summary:     summaryVal,
             check_date:  r[c5('check_date')] instanceof Date ? r[c5('check_date')].toLocaleDateString('th-TH') : String(r[c5('check_date')]||''),
             remark:      String(r[c5('remark')]||''),
@@ -465,6 +469,7 @@ const PAGES = {
   workload:   Workload,
   installer:  InstallerMgmt,
   hosplist:   HospList,
+  retrokey:   RetroKey,
 }
 
 function getGSheetExportUrl(url) {
@@ -481,6 +486,7 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000  // 5 นาที (main sheet)
 const PROD_REFRESH_MS = 10 * 60 * 1000 // 10 นาที (production sheet)
 
 export default function App() {
+  useGlobalResizableColumns()
   const [data, setData] = useState(DEFAULT_DATA)
   const [prodLoading, setProdLoading] = useState(false)
   const [prodError, setProdError] = useState('')
@@ -496,7 +502,7 @@ export default function App() {
   const defectCountdownRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
-  const [page, setPage] = useState('production')
+  const [page, setPage] = useState('overview')
   const [dragging, setDragging] = useState(false)
   const [showGS, setShowGS] = useState(false)
   const [gsUrl, setGsUrl] = useState('https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit?usp=sharing')

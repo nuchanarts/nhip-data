@@ -1,6 +1,7 @@
 const MENU = [
   { key: 'overview',  icon: '🏠', label: 'ภาพรวมโครงการ',     sub: 'Overview' },
   { key: 'production',icon: '📈', label: 'ข้อมูลการใช้งาน',    sub: 'Usage Data' },
+  { key: 'retrokey',  icon: '🔁', label: 'คีย์ย้อนหลัง',        sub: 'คาดว่าใช้คู่ขนาน' },
   { key: 'volume',    icon: '📊', label: 'ข้อมูลการติดตั้งระบบ', sub: 'Installation Data' },
   { key: 'install',   icon: '🚀', label: 'รายงานการติดตั้ง',    sub: 'Installation Report' },
   { key: 'defect',    icon: '🐞', label: 'Defect & Request',    sub: 'Bug & Feature' },

@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import html2canvas from 'html2canvas'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -135,7 +134,7 @@ function MilestoneCards({ done }) {
 }
 
 export default function Overview({ data }) {
-  const { job_status, progress, regions, monthly, standby_status, defect_status, defect_urgency, total, installList, regionDone } = data
+  const { job_status, progress, regions, monthly, standby_status, defect_status, defect_urgency, installList } = data
 
   const exportReportJpg = async () => {
     const today = new Date().toLocaleDateString('th-TH', { day:'2-digit', month:'long', year:'numeric' })
@@ -303,12 +302,15 @@ export default function Overview({ data }) {
   const summaryTotal = Object.values(summaryCnt).reduce((a,b)=>a+b,0) || 1
 
   const totalJS = Object.values(job_status).reduce((a,b)=>a+b,0) || 1
-  const installed = (job_status['ใช้งานระบบ']||0)+(job_status['ใช้งานคู่ขนาน']||0)
-  const waiting   = job_status['รอติดตั้ง']||0
-  const inProg    = progress['อยู่ในระหว่างดำเนินการ']||0
   const done      = progress['ดำเนินการแล้ว']||0
-  const inactive  = (job_status['ไม่ได้ใช้งาน']||0)+(job_status['เลิกใช้งาน']||0)
   const donePct   = ((done/totalJS)*100).toFixed(1)
+
+  // ── สถานะการติดตั้งจริง (อิงคอลัมน์ "ดำเนินการแล้ว" / progress) ──
+  const instAll     = (installList || []).length || Object.values(progress).reduce((a,b)=>a+b,0) || 1
+  const pDone       = progress['ดำเนินการแล้ว']||0
+  const pNotYet     = progress['ยังไม่ติดตั้ง']||0
+  const pInProgress = progress['อยู่ในระหว่างดำเนินการ']||0
+  const pct = n => ((n/instAll)*100).toFixed(1)
 
   const defectTotal   = Object.values(defect_status||{}).reduce((a,b)=>a+b,0)||1
   const defectDone    = (defect_status?.['แก้ไขเรียบร้อย']||0) + (defect_status?.['ดำเนินการแล้ว']||0)
@@ -476,11 +478,10 @@ export default function Overview({ data }) {
       <div className="section-label" style={{marginTop:24}}>ตัวชี้วัดหลัก</div>
       <div className="kpi-grid">
         {[
-          {color:'c-blue',  icon:'🏥', val:fmt(totalJS),   label:'รพ.สต. ทั้งหมด',       pct:'100%',       bar:100},
-          {color:'c-green', icon:'✅', val:fmt(done),       label:'ดำเนินการแล้ว',         pct:`${donePct}%`,bar:+donePct},
-          {color:'c-orange',icon:'⏳', val:fmt(waiting),    label:'รอติดตั้ง',             pct:`${((waiting/totalJS)*100).toFixed(1)}%`,bar:(waiting/totalJS)*100},
-          {color:'c-purple',icon:'🔄', val:fmt(inProg),     label:'กำลังดำเนินการ',        pct:`${((inProg/totalJS)*100).toFixed(1)}%`, bar:(inProg/totalJS)*100},
-          {color:'c-red',   icon:'❌', val:fmt(inactive),   label:'ไม่ได้ใช้งาน',          pct:`${((inactive/totalJS)*100).toFixed(1)}%`,bar:(inactive/totalJS)*100},
+          {color:'c-blue',  icon:'🏥', val:fmt(instAll),     label:'รพ.สต. ทั้งหมด',   pct:'100%',            bar:100},
+          {color:'c-green', icon:'✅', val:fmt(pDone),       label:'ดำเนินการแล้ว',     pct:`${pct(pDone)}%`,      bar:+pct(pDone)},
+          {color:'c-orange',icon:'⏳', val:fmt(pNotYet),     label:'ยังไม่ติดตั้ง',     pct:`${pct(pNotYet)}%`,    bar:+pct(pNotYet)},
+          {color:'c-purple',icon:'🔄', val:fmt(pInProgress), label:'กำลังดำเนินการ',    pct:`${pct(pInProgress)}%`,bar:+pct(pInProgress)},
         ].map((k,i)=>(
           <div key={i} className={`kpi-card ${k.color}`}>
             <div className="kpi-icon">{k.icon}</div>

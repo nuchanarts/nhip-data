@@ -12,6 +12,11 @@ const STATUS_COLOR = {
   'ไม่ได้ใช้งาน': '#ef4444',
   'เลิกใช้งาน':   '#94a3b8',
 }
+const HIS_COLOR = {
+  'HOSxP':  '#2563eb',
+  'JHCIS':  '#7c3aed',
+  'MY PCU': '#06b6d4',
+}
 const SUMMARY_COLOR = {
   'ทำรายงานติดตั้งแล้ว':       '#10b981',
   'ยังไม่ทำรายงานติดตั้ง':     '#ef4444',
@@ -28,6 +33,7 @@ export default function HospList({ data }) {
   const [filterProgress, setFP]     = useState('')
   const [filterStatus, setFS]       = useState('')
   const [filterSummary, setFSumm]   = useState('')
+  const [filterHIS, setFHIS]        = useState('')
   const [filterProvince, setFProv]  = useState('')
   const [filterRegion, setFReg]     = useState('')
   const [page, setPage]             = useState(1)
@@ -38,6 +44,7 @@ export default function HospList({ data }) {
   const progOpts  = useMemo(() => [...new Set(list.map(r => r.progress).filter(Boolean))].sort(), [list])
   const statOpts  = useMemo(() => [...new Set(list.map(r => r.status).filter(Boolean))].sort(), [list])
   const summOpts  = useMemo(() => [...new Set(list.map(r => r.summary).filter(Boolean))].sort(), [list])
+  const hisOpts   = useMemo(() => [...new Set(list.map(r => r.his).filter(Boolean))].sort(), [list])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -46,11 +53,12 @@ export default function HospList({ data }) {
       if (filterProgress && r.progress !== filterProgress) return false
       if (filterStatus   && r.status   !== filterStatus)   return false
       if (filterSummary  && r.summary  !== filterSummary)  return false
+      if (filterHIS      && r.his      !== filterHIS)      return false
       if (filterProvince && r.province !== filterProvince) return false
       if (filterRegion   && String(r.region) !== filterRegion) return false
       return true
     })
-  }, [list, search, filterProgress, filterStatus, filterSummary, filterProvince, filterRegion])
+  }, [list, search, filterProgress, filterStatus, filterSummary, filterHIS, filterProvince, filterRegion])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const rows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -117,8 +125,13 @@ export default function HospList({ data }) {
           <option value="">ทุกสรุปรายงาน</option>
           {summOpts.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(search || filterProgress || filterStatus || filterSummary || filterProvince || filterRegion) && (
-          <button onClick={() => { setSearch(''); setFP(''); setFS(''); setFSumm(''); setFProv(''); setFReg(''); resetPage() }}
+        <select value={filterHIS} onChange={e => { setFHIS(e.target.value); resetPage() }}
+          style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+          <option value="">ทุกระบบ HIS เดิม</option>
+          {hisOpts.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+        {(search || filterProgress || filterStatus || filterSummary || filterHIS || filterProvince || filterRegion) && (
+          <button onClick={() => { setSearch(''); setFP(''); setFS(''); setFSumm(''); setFHIS(''); setFProv(''); setFReg(''); resetPage() }}
             style={{ padding: '7px 14px', border: '1px solid #ef4444', borderRadius: 8, fontSize: 13, background: '#fee2e2', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}>
             ล้างตัวกรอง
           </button>
@@ -130,14 +143,14 @@ export default function HospList({ data }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
-              {['#','รหัส','ชื่อ รพ.สต.','เขต','จังหวัด','อำเภอ','วันที่ติดตั้ง','Progress','สถานะงาน','สรุปรายงาน','ผู้ติดตั้ง'].map((h,i) => (
+              {['#','รหัส','ชื่อ รพ.สต.','เขต','จังหวัด','อำเภอ','วันที่ติดตั้ง','Progress','สถานะงาน','สรุปรายงาน','ระบบ HIS เดิม','ผู้ติดตั้ง'].map((h,i) => (
                 <th key={i} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: 12 }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={11} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>ไม่พบข้อมูล</td></tr>
+              <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>ไม่พบข้อมูล</td></tr>
             ) : rows.map((r, i) => (
               <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
@@ -152,6 +165,7 @@ export default function HospList({ data }) {
                 <td style={{ padding: '8px 12px' }}>{badge(r.progress, PROGRESS_COLOR)}</td>
                 <td style={{ padding: '8px 12px' }}>{badge(r.status, STATUS_COLOR)}</td>
                 <td style={{ padding: '8px 12px' }}>{badge(r.summary, SUMMARY_COLOR)}</td>
+                <td style={{ padding: '8px 12px' }}>{badge(r.his, HIS_COLOR)}</td>
                 <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{r.responsible || '-'}</td>
               </tr>
             ))}
