@@ -674,14 +674,14 @@ export default function InstallTracking({ data }) {
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                 <thead>
                   <tr style={{background:'var(--bg-secondary)',borderBottom:'2px solid var(--border)'}}>
-                    {['#','รหัส','ชื่อ รพ.สต.','จังหวัด','สถานะ','ผู้รับผิดชอบ','หมายเหตุ'].map(h=>(
+                    {['#','รหัส','ชื่อ รพ.สต.','จังหวัด','สถานะ','ระบบ HIS เดิม','ผู้รับผิดชอบ','หมายเหตุ'].map(h=>(
                       <th key={h} style={{padding:'8px 12px',textAlign:'left',fontWeight:700,color:'var(--text-secondary)',fontSize:12,whiteSpace:'nowrap'}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {inactivePaged.length === 0 && (
-                    <tr><td colSpan={7} style={{padding:24,textAlign:'center',color:'var(--text-secondary)'}}>ไม่พบข้อมูล</td></tr>
+                    <tr><td colSpan={8} style={{padding:24,textAlign:'center',color:'var(--text-secondary)'}}>ไม่พบข้อมูล</td></tr>
                   )}
                   {inactivePaged.map((r,i)=>(
                     <tr key={i} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'var(--bg-secondary)'}}>
@@ -694,6 +694,13 @@ export default function InstallTracking({ data }) {
                           background:(JOB_COLOR[r.status]||'#94a3b8')+'20',color:JOB_COLOR[r.status]||'#94a3b8'}}>
                           {r.status||'-'}
                         </span>
+                      </td>
+                      <td style={{padding:'7px 12px'}}>
+                        {r.his
+                          ? <span style={{padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:600,
+                              background:r.his==='HOSxP'?'#dbeafe':r.his==='JHCIS'?'#ede9fe':r.his==='MY PCU'?'#cffafe':'#f1f5f9',
+                              color:r.his==='HOSxP'?'#1d4ed8':r.his==='JHCIS'?'#6d28d9':r.his==='MY PCU'?'#0e7490':'#475569'}}>{r.his}</span>
+                          : <span style={{color:'var(--text-secondary)'}}>—</span>}
                       </td>
                       <td style={{padding:'7px 12px',color:'var(--text-secondary)'}}>{r.responsible||'—'}</td>
                       <td style={{padding:'7px 12px',color:r.remark?'var(--text-primary)':'var(--text-secondary)',fontStyle:r.remark?'normal':'italic'}}>

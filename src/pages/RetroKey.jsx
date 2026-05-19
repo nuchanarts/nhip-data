@@ -24,6 +24,7 @@ export default function RetroKey() {
   const [search, setSearch] = useState('')
   const [region, setRegion] = useState('')
   const [province, setProvince] = useState('')
+  const [minY, setMinY] = useState('')        // คีย์ย้อนหลัง ≥ N ครั้ง
   const [page, setPage] = useState(1)
 
   const load = useCallback(() => {
@@ -89,9 +90,10 @@ export default function RetroKey() {
       if (q && !r.name.toLowerCase().includes(q) && !r.hospcode.includes(q) && !r.province.toLowerCase().includes(q)) return false
       if (region && String(r.region) !== region) return false
       if (province && r.province !== province) return false
+      if (minY && r.yCount < Number(minY)) return false
       return true
     })
-  }, [rows, search, region, province])
+  }, [rows, search, region, province, minY])
 
   const byRegion = useMemo(() => {
     const m = {}
@@ -185,8 +187,16 @@ export default function RetroKey() {
               <option value="">ทุกจังหวัด</option>
               {provinces.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-            {(search || region || province) && (
-              <button onClick={() => { setSearch(''); setRegion(''); setProvince(''); setPage(1) }}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>คีย์ย้อนหลัง ≥</span>
+              <input type="number" min="0" value={minY}
+                onChange={e => { setMinY(e.target.value); setPage(1) }}
+                placeholder="เช่น 5"
+                style={{ width: 72, textAlign: 'center', padding: '7px 8px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: '#fff' }} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>ครั้ง</span>
+            </div>
+            {(search || region || province || minY) && (
+              <button onClick={() => { setSearch(''); setRegion(''); setProvince(''); setMinY(''); setPage(1) }}
                 style={{ padding: '7px 14px', border: '1px solid #ef4444', borderRadius: 8, fontSize: 13, background: '#fee2e2', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}>
                 ล้างตัวกรอง
               </button>

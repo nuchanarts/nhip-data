@@ -335,7 +335,7 @@ export default function DataVolume({ data }) {
 
         {/* Table */}
         <div style={{overflowX:'auto'}}>
-          <div style={{minWidth:2000}}>
+          <div style={{minWidth:2110}}>
             {/* Header */}
             <div className="lb-header">
               <span style={{width:36,flexShrink:0}}>#</span>
@@ -354,6 +354,7 @@ export default function DataVolume({ data }) {
               <span style={{width:100,flexShrink:0,textAlign:'center'}}>สถานะใช้งาน</span>
               <span style={{width:80,flexShrink:0}}>ผู้รับผิดชอบ</span>
               <span style={{width:60,flexShrink:0}}>PM</span>
+              <span style={{width:90,flexShrink:0,textAlign:'center'}}>ระบบ HIS เดิม</span>
               <span style={{width:180,flexShrink:0}}>สรุปรายงานติดตั้ง</span>
               <span style={{width:90,flexShrink:0,textAlign:'center'}}>วันที่ตรวจสอบ</span>
               <span style={{width:220,flexShrink:0}}>หมายเหตุ</span>
@@ -404,6 +405,15 @@ export default function DataVolume({ data }) {
                 </span>
                 <span style={{width:80,flexShrink:0,color:'var(--text-secondary)',paddingTop:2}}>{r.responsible||'—'}</span>
                 <span style={{width:60,flexShrink:0,color:'var(--text-muted)',paddingTop:2,fontSize:11}}>{r.pm||'—'}</span>
+                <span style={{width:90,flexShrink:0,textAlign:'center',paddingTop:2}}>
+                  {r.his
+                    ? <span style={{
+                        background: r.his==='HOSxP'?'#dbeafe':r.his==='JHCIS'?'#ede9fe':r.his==='MY PCU'?'#cffafe':'#f1f5f9',
+                        color: r.his==='HOSxP'?'#1d4ed8':r.his==='JHCIS'?'#6d28d9':r.his==='MY PCU'?'#0e7490':'#475569',
+                        padding:'1px 7px',borderRadius:4,fontSize:10,fontWeight:600
+                      }}>{r.his}</span>
+                    : <span style={{color:'#cbd5e1'}}>—</span>}
+                </span>
                 <span style={{width:180,flexShrink:0,paddingTop:2,lineHeight:1.4}}>
                   {r.summary
                     ? <span style={{

@@ -46,6 +46,8 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('latest') // 'latest' | 'total' | 'name'
   const [page, setPage] = useState(1)
+  const [hisProvSearch, setHisProvSearch] = useState('')
+  const [hisFilterSys, setHisFilterSys] = useState('')   // กรองจังหวัดที่ใช้ HIS นี้ (หลังติดตั้ง)
   const [provSearch, setProvSearch] = useState('')
   const [provRegion, setProvRegion] = useState('')
   const [provMinPct, setProvMinPct] = useState('')
@@ -137,6 +139,66 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
       notUsingByProv[p].push({ hospcode: r.hospcode, name: r.name || '', remark: r.remark || '', responsible: r.responsible || '' })
     }
   })
+
+  // ── มุมผู้บริหาร: ระบบ HIS เดิม ของลูกค้าที่ติดตั้งระบบไปแล้ว ──
+  const HIS_KEYS = ['HOSxP', 'JHCIS', 'MY PCU']
+  const HIS_COLOR = { 'HOSxP': '#2563eb', 'JHCIS': '#7c3aed', 'MY PCU': '#06b6d4', 'อื่น ๆ': '#f59e0b', 'ไม่ระบุ': '#94a3b8' }
+  const normHis = v => {
+    const s = String(v || '').trim()
+    if (!s) return 'ไม่ระบุ'
+    return HIS_KEYS.includes(s) ? s : 'อื่น ๆ'
+  }
+  // th-TH date "d/m/พ.ศ." → เลขเรียงลำดับ YYYYMMDD (ค.ศ.)
+  const parseThDate = s => {
+    const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (!m) return null
+    let [, d, mo, y] = m
+    y = Number(y); if (y > 2200) y -= 543
+    return y * 10000 + Number(mo) * 100 + Number(d)
+  }
+  const hisInstalledRows = installList.filter(r => r.progress === 'ดำเนินการแล้ว')
+  const hisCount = {}
+  hisInstalledRows.forEach(r => { const k = normHis(r.his); hisCount[k] = (hisCount[k] || 0) + 1 })
+  const hisTotal = hisInstalledRows.length || 1
+  const hisDist = ['HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ']
+    .filter(k => hisCount[k])
+    .map(k => ({ name: k, value: hisCount[k], pct: ((hisCount[k] / hisTotal) * 100) }))
+  const hisProvMap = {}
+  hisInstalledRows.forEach(r => {
+    const p = r.province?.includes('-') ? r.province.split('-').slice(1).join('-') : (r.province || '')
+    if (!p) return
+    if (!hisProvMap[p]) hisProvMap[p] = { province: p, total: 0, firstInstall: null, firstInstallStr: '', HOSxP: 0, JHCIS: 0, 'MY PCU': 0, 'อื่น ๆ': 0, 'ไม่ระบุ': 0 }
+    const o = hisProvMap[p]
+    o.total++
+    o[normHis(r.his)]++
+    const dn = parseThDate(r.install_date)
+    if (dn != null && (o.firstInstall == null || dn < o.firstInstall)) { o.firstInstall = dn; o.firstInstallStr = r.install_date }
+  })
+  const hisProvList = Object.values(hisProvMap)
+    .map(o => ({ ...o, topHis: HIS_KEYS.concat('อื่น ๆ', 'ไม่ระบุ').reduce((a, k) => (o[k] > (o[a] || 0) ? k : a), 'ไม่ระบุ') }))
+    .sort((a, b) => b.total - a.total)
+
+  // ── รายงานผู้บริหาร: โครงการ HIE — แทนระบบเดิมทั้งหมด (EHP 100%) vs ใช้ 2 ระบบ (คู่ขนาน) ──
+  // เกณฑ์: เฉพาะที่ขึ้นระบบเสร็จ (progress = ดำเนินการแล้ว)
+  //   ใช้งานระบบ        → ใช้ EHP แทนระบบเดิมทั้งหมด (100%)
+  //   ใช้งานคู่ขนาน      → ยังใช้ 2 ระบบ (EHP + ระบบเดิม)
+  const hieDone = hisInstalledRows
+  const hieSingle = hieDone.filter(r => r.status === 'ใช้งานระบบ')           // EHP 100%
+  const hieParallel = hieDone.filter(r => r.status === 'ใช้งานคู่ขนาน')      // 2 ระบบ
+  const hieOther = hieDone.filter(r => r.status !== 'ใช้งานระบบ' && r.status !== 'ใช้งานคู่ขนาน')
+  const hieTotal = hieDone.length || 1
+  // โปรแกรมเดิมของกลุ่มที่ยังใช้ 2 ระบบ — แยกกลุ่ม + %
+  const parOldSys = {}
+  hieParallel.forEach(r => { const k = normHis(r.his); parOldSys[k] = (parOldSys[k] || 0) + 1 })
+  const parOldSysList = ['HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ']
+    .filter(k => parOldSys[k])
+    .map(k => ({ name: k, value: parOldSys[k], pct: (parOldSys[k] / (hieParallel.length || 1)) * 100 }))
+  // สาเหตุที่ยังใช้ 2 ระบบ (จัดกลุ่มจากหมายเหตุ)
+  const parReason = {}
+  hieParallel.forEach(r => { const k = (r.remark || '').trim() || 'ไม่ระบุสาเหตุ'; parReason[k] = (parReason[k] || 0) + 1 })
+  const parReasonList = Object.entries(parReason)
+    .map(([name, value]) => ({ name, value, pct: (value / (hieParallel.length || 1)) * 100 }))
+    .sort((a, b) => b.value - a.value)
 
   const provMap = {}
   productionVisits.forEach(h => {
@@ -334,6 +396,133 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
           </div>
         ))}
       </div>
+
+      {/* 👔 มุมผู้บริหาร — โครงการ HIE & ระบบ HIS เดิม */}
+      {hisInstalledRows.length > 0 && (
+        <>
+          <div className="section-label" style={{ marginTop: 24 }}>👔 รายงานผู้บริหาร — โครงการ HIE &amp; ระบบ HIS เดิม</div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            {[
+              { icon: '✅', label: 'ขึ้นระบบเสร็จสิ้น (ดำเนินการแล้ว)', val: fmt(hieDone.length), sub: '100%', color: '#2563eb' },
+              { icon: '🟢', label: 'ใช้ EHP แทนระบบเดิมทั้งหมด', val: fmt(hieSingle.length), sub: `${((hieSingle.length / hieTotal) * 100).toFixed(1)}%`, color: '#10b981' },
+              { icon: '🔄', label: 'ยังใช้ 2 ระบบ (คู่ขนาน)', val: fmt(hieParallel.length), sub: `${((hieParallel.length / hieTotal) * 100).toFixed(1)}%`, color: '#f59e0b' },
+              { icon: '⚪', label: 'สถานะอื่น ๆ', val: fmt(hieOther.length), sub: `${((hieOther.length / hieTotal) * 100).toFixed(1)}%`, color: '#94a3b8' },
+            ].map((k, i) => (
+              <div key={i} style={{ flex: '1 1 200px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px' }}>
+                <div style={{ fontSize: 20, marginBottom: 2 }}>{k.icon}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: k.color }}>{k.val} <span style={{ fontSize: 13, fontWeight: 700 }}>({k.sub})</span></div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{k.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* สัดส่วนระบบ HIS เดิม (ทั้งหมดที่ติดตั้ง) */}
+          <div className="chart-card" style={{ marginBottom: 14 }}>
+            <div className="chart-header"><div><div className="chart-title">สัดส่วนระบบ HIS เดิม — ลูกค้าที่ติดตั้งระบบไปแล้ว ({fmt(hieDone.length)} แห่ง)</div></div></div>
+            <div style={{ display: 'flex', height: 26, borderRadius: 6, overflow: 'hidden', marginBottom: 10 }}>
+              {hisDist.map((d, i) => (
+                <div key={i} title={`${d.name} ${d.value} (${d.pct.toFixed(1)}%)`}
+                  style={{ width: `${d.pct}%`, background: HIS_COLOR[d.name] || '#94a3b8', minWidth: d.pct > 0 ? 2 : 0 }} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {hisDist.map((d, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: HIS_COLOR[d.name] || '#94a3b8' }} />
+                  <b>{d.name}</b> {fmt(d.value)} <span style={{ color: 'var(--text-muted)' }}>({d.pct.toFixed(1)}%)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* กลุ่มที่ยังใช้ 2 ระบบ: โปรแกรมเดิม + สาเหตุ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <div className="chart-card" style={{ margin: 0 }}>
+              <div className="chart-header"><div><div className="chart-title">โปรแกรมเดิมของกลุ่มที่ยังใช้ 2 ระบบ</div><div className="chart-sub">{fmt(hieParallel.length)} แห่ง</div></div></div>
+              {parOldSysList.map((d, i) => (
+                <div key={i} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ fontWeight: 700 }}>{d.name}</span>
+                    <span>{fmt(d.value)} <span style={{ color: 'var(--text-muted)' }}>({d.pct.toFixed(1)}%)</span></span>
+                  </div>
+                  <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4 }}>
+                    <div style={{ width: `${d.pct}%`, height: '100%', background: HIS_COLOR[d.name] || '#94a3b8', borderRadius: 4 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="chart-card" style={{ margin: 0 }}>
+              <div className="chart-header"><div><div className="chart-title">สาเหตุที่ยังใช้ 2 ระบบ</div><div className="chart-sub">จัดกลุ่มจากหมายเหตุ</div></div></div>
+              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                {parReasonList.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ flex: 1, lineHeight: 1.3 }}>{d.name}</span>
+                    <span style={{ flexShrink: 0, fontWeight: 700 }}>{fmt(d.value)} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({d.pct.toFixed(1)}%)</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* รายจังหวัด: ใช้ HIS อะไร + เริ่มติดตั้งวันไหน */}
+          <div className="section-label">ระบบ HIS เดิม แยกตามจังหวัด · วันที่เริ่มติดตั้ง</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+            <input value={hisProvSearch} onChange={e => setHisProvSearch(e.target.value)}
+              placeholder="🔍 ค้นหาจังหวัด..."
+              style={{ width: 200, padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: '#fff' }} />
+            <select value={hisFilterSys} onChange={e => setHisFilterSys(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+              <option value="">ทุกระบบ HIS เดิม</option>
+              {['HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ'].map(k => <option key={k} value={k}>ใช้ {k}</option>)}
+            </select>
+            {(hisProvSearch || hisFilterSys) && (
+              <button onClick={() => { setHisProvSearch(''); setHisFilterSys('') }}
+                style={{ padding: '6px 12px', border: '1px solid #ef4444', borderRadius: 8, fontSize: 12, background: '#fee2e2', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}>ล้างตัวกรอง</button>
+            )}
+            {(() => {
+              const fl = hisProvList.filter(o =>
+                (!hisProvSearch || o.province.includes(hisProvSearch)) &&
+                (!hisFilterSys || (o[hisFilterSys] || 0) > 0))
+              const sum = k => fl.reduce((a, o) => a + (o[k] || 0), 0)
+              return (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                  {fl.length} จังหวัด · HOSxP {fmt(sum('HOSxP'))} · JHCIS {fmt(sum('JHCIS'))} · MY PCU {fmt(sum('MY PCU'))} แห่ง
+                </span>
+              )
+            })()}
+          </div>
+          <div className="chart-card" style={{ marginBottom: 22, padding: 0, overflow: 'auto', maxHeight: 460 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
+                  {['จังหวัด', 'ติดตั้งแล้ว', 'HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ', 'HIS หลัก', 'เริ่มติดตั้ง'].map((h, i) => (
+                    <th key={i} style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'center', fontWeight: 700, color: 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {hisProvList
+                  .filter(o => (!hisProvSearch || o.province.includes(hisProvSearch)) && (!hisFilterSys || (o[hisFilterSys] || 0) > 0))
+                  .map((o, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '6px 12px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{o.province}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>{fmt(o.total)}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o.HOSxP ? '#1d4ed8' : '#cbd5e1' }}>{o.HOSxP || '-'}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o.JHCIS ? '#6d28d9' : '#cbd5e1' }}>{o.JHCIS || '-'}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o['MY PCU'] ? '#0e7490' : '#cbd5e1' }}>{o['MY PCU'] || '-'}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', color: o['อื่น ๆ'] ? '#b45309' : '#cbd5e1' }}>{o['อื่น ๆ'] || '-'}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{o['ไม่ระบุ'] || '-'}</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center' }}>
+                      <span style={{ background: (HIS_COLOR[o.topHis] || '#94a3b8') + '22', color: HIS_COLOR[o.topHis] || '#475569', padding: '1px 8px', borderRadius: 4, fontWeight: 700 }}>{o.topHis}</span>
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{o.firstInstallStr || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {/* ติดตั้งแล้ว vs ใช้งาน */}
       {installedTotal > 0 && (
