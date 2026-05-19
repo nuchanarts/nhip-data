@@ -445,7 +445,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
           {/* กลุ่มที่ยังใช้ 2 ระบบ: โปรแกรมเดิม + สาเหตุ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             <div className="chart-card" style={{ margin: 0 }}>
-              <div className="chart-header"><div><div className="chart-title">โปรแกรมเดิมของกลุ่มที่ยังใช้ 2 ระบบ</div><div className="chart-sub">{fmt(hieParallel.length)} แห่ง</div></div></div>
+              <div className="chart-header"><div><div className="chart-title">ระบบ HIS เดิมที่ใช้งาน</div><div className="chart-sub">{fmt(hieParallel.length)} แห่ง</div></div></div>
               {parOldSysList.map((d, i) => (
                 <div key={i} style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
