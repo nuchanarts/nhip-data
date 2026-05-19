@@ -643,8 +643,11 @@ export default function App() {
     if (page === 'defect') loadDefectSheet()
   }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // โหลด production sheet ใหม่ทันทีทุกครั้งที่เปิดหน้า ข้อมูลการใช้งาน
+  // โหลด production sheet ใหม่ทุกครั้งที่ "เปลี่ยนมา" หน้า ข้อมูลการใช้งาน
+  // ข้ามรอบแรก (mount) เพราะ effect โหลดครั้งแรกทำงานอยู่แล้ว — กัน fetch ซ้ำซ้อน
+  const prodNavFirstRef = useRef(true)
   useEffect(() => {
+    if (prodNavFirstRef.current) { prodNavFirstRef.current = false; return }
     if (page === 'production') loadProdSheet()
   }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
 
