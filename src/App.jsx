@@ -16,7 +16,7 @@ import HospList from './pages/HospList'
 import ProductionData from './pages/ProductionData'
 import './index.css'
 
-const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1QYL-jT-fc4SfXtO2o8nFN9pipbwPDy9j/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
+const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1a6nP3FBPka-DJeEzUk40_XiNYch_Eym-/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
 const DEFECT_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1voV3mHQi7bH2PbBeWaVrk0EaUs-9BnqMpKc53oI__RE/edit?gid=0#gid=0'
 const DEFECT_REFRESH_MS = 10 * 60 * 1000 // 10 นาที
 
@@ -496,7 +496,7 @@ export default function App() {
   const defectCountdownRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
-  const [page, setPage] = useState('overview')
+  const [page, setPage] = useState('production')
   const [dragging, setDragging] = useState(false)
   const [showGS, setShowGS] = useState(false)
   const [gsUrl, setGsUrl] = useState('https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit?usp=sharing')
@@ -641,6 +641,11 @@ export default function App() {
   // โหลด defect sheet ใหม่ทันทีเมื่อเปิดหน้า defect
   useEffect(() => {
     if (page === 'defect') loadDefectSheet()
+  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // โหลด production sheet ใหม่ทันทีทุกครั้งที่เปิดหน้า ข้อมูลการใช้งาน
+  useEffect(() => {
+    if (page === 'production') loadProdSheet()
   }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ปิด popup เมื่อกด Escape
