@@ -48,6 +48,8 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
   const [page, setPage] = useState(1)
   const [hisProvSearch, setHisProvSearch] = useState('')
   const [hisFilterSys, setHisFilterSys] = useState('')   // กรองจังหวัดที่ใช้ HIS นี้ (หลังติดตั้ง)
+  const [hisSortKey, setHisSortKey] = useState('total')  // คอลัมน์ที่ใช้เรียงตาราง HIS รายจังหวัด
+  const [hisSortDir, setHisSortDir] = useState('desc')   // 'asc' | 'desc'
   const [provSearch, setProvSearch] = useState('')
   const [provRegion, setProvRegion] = useState('')
   const [provMinPct, setProvMinPct] = useState('')
@@ -57,6 +59,8 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
   const [simSelected, setSimSelected] = useState([]) // จังหวัดที่เลือกใน simulator
   const [simSearch, setSimSearch] = useState('')
   const [simTarget, setSimTarget] = useState('80') // % เป้าหมาย
+  const [simHis, setSimHis] = useState('')         // กรอง HIS เดิม ในกระดานคำนวณ
+  const [simSingleHis, setSimSingleHis] = useState(false) // แสดงเฉพาะจังหวัดที่ใช้ HIS เดิมเดียว
   const [exportProvince, setExportProvince] = useState('__all__')
   const [expandedPilot, setExpandedPilot] = useState({})
 
@@ -136,7 +140,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
       usingByProv[p] = (usingByProv[p] || 0) + 1
     } else {
       if (!notUsingByProv[p]) notUsingByProv[p] = []
-      notUsingByProv[p].push({ hospcode: r.hospcode, name: r.name || '', remark: r.remark || '', responsible: r.responsible || '' })
+      notUsingByProv[p].push({ hospcode: r.hospcode, name: r.name || '', remark: r.remark || '', responsible: r.responsible || '', his: r.his })
     }
   })
 
@@ -184,6 +188,66 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
   const hisProvList = Object.values(hisProvMap)
     .map(o => ({ ...o, topHis: HIS_KEYS.concat('อื่น ๆ', 'ไม่ระบุ').reduce((a, k) => (o[k] > (o[a] || 0) ? k : a), 'ไม่ระบุ') }))
     .sort((a, b) => b.total - a.total)
+
+  // ลำดับคอลัมน์ HIS ในตาราง (ใช้ทั้ง render แถวข้อมูล / แถวยอดรวม / export)
+  const HIS_COLS = [
+    ['HOSxP', '#1d4ed8'], ['JHCIS', '#6d28d9'], ['MY PCU', '#0e7490'],
+    ['อื่น ๆ', '#b45309'], ['ไม่ระบุ', '#64748b'],
+  ]
+  // ใช้งานจริงรวมทุก HIS ของจังหวัด/ยอดรวม
+  const hisUseTotal = o => HIS_COLS.reduce((s, [k]) => s + (o[k + '_use'] || 0), 0)
+  // เรียงลำดับตาราง HIS รายจังหวัด — ค่าที่ใช้เปรียบเทียบของแต่ละคอลัมน์ (ค่าว่าง = จัดท้ายตาราง)
+  const hisSortVal = (o, key) => {
+    if (key.startsWith('pct:')) { const h = key.slice(4); return o[h] ? o[h + '_use'] / o[h] : null }
+    switch (key) {
+      case 'province': return o.province
+      case 'topHis': return o.topHis
+      case 'firstInstall': return o.firstInstall              // เลข YYYYMMDD หรือ null
+      case 'pctTotal': return o.total ? hisUseTotal(o) / o.total : null
+      default: return o[key]                                  // total, HOSxP, JHCIS, MY PCU, อื่น ๆ, ไม่ระบุ
+    }
+  }
+  const hisProvDisplay = hisProvList
+    .filter(o => (!hisProvSearch || o.province.includes(hisProvSearch)) && (!hisFilterSys || (o[hisFilterSys] || 0) > 0))
+    .sort((a, b) => {
+      const va = hisSortVal(a, hisSortKey), vb = hisSortVal(b, hisSortKey)
+      if (va == null && vb == null) return 0
+      if (va == null) return 1
+      if (vb == null) return -1
+      const r = typeof va === 'string' ? va.localeCompare(vb, 'th') : va - vb
+      return hisSortDir === 'asc' ? r : -r
+    })
+  // ยอดรวมท้ายตาราง — รวมทุกจังหวัดที่แสดงอยู่ (ตามตัวกรอง)
+  const hisTotals = hisProvDisplay.reduce((a, o) => {
+    a.total += o.total
+    HIS_COLS.forEach(([k]) => { a[k] += o[k]; a[k + '_use'] += o[k + '_use'] })
+    return a
+  }, { total: 0, HOSxP: 0, HOSxP_use: 0, JHCIS: 0, JHCIS_use: 0, 'MY PCU': 0, 'MY PCU_use': 0, 'อื่น ๆ': 0, 'อื่น ๆ_use': 0, 'ไม่ระบุ': 0, 'ไม่ระบุ_use': 0 })
+  const hisFootCell = { position: 'sticky', bottom: 0, zIndex: 1, background: '#eef2f7', borderTop: '2px solid var(--border)', padding: '8px 12px' }
+  const toggleHisSort = key => {
+    if (hisSortKey === key) setHisSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setHisSortKey(key); setHisSortDir(key === 'province' || key === 'topHis' ? 'asc' : 'desc') }
+  }
+
+  // Export ตาราง "ระบบ HIS เดิม แยกตามจังหวัด" → Excel (ตามตัวกรอง + ลำดับที่แสดงอยู่)
+  const exportHisProvExcel = () => {
+    const pct = (use, inst) => (inst ? Math.round((use / inst) * 1000) / 10 : '')
+    // 1 แถว = จังหวัด + คอลัมน์ HIS แต่ละตัว (ติดตั้ง / ใช้จริง / %) เรียงคู่กันตามตาราง
+    const rowOf = o => {
+      const r = { 'จังหวัด': o.province, 'ติดตั้งแล้ว': o.total, '% รวม': pct(hisUseTotal(o), o.total) }
+      HIS_COLS.forEach(([k]) => {
+        r[`${k} ติดตั้ง`] = o[k]
+        r[`${k} ใช้จริง`] = o[k + '_use']
+        r[`% ${k}`] = pct(o[k + '_use'], o[k])
+      })
+      return r
+    }
+    const rows = hisProvDisplay.map(o => ({ ...rowOf(o), 'HIS หลัก': o.topHis, 'เริ่มติดตั้ง': o.firstInstallStr || '' }))
+    rows.push({ ...rowOf({ province: 'รวมทั้งหมด', ...hisTotals }), 'HIS หลัก': '', 'เริ่มติดตั้ง': '' })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'HIS เดิม รายจังหวัด')
+    XLSX.writeFile(wb, `his_by_province_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
 
   // ── รายงานผู้บริหาร: โครงการ HIE — แทนระบบเดิมทั้งหมด (EHP 100%) vs ใช้ 2 ระบบ (คู่ขนาน) ──
   // เกณฑ์: เฉพาะที่ขึ้นระบบเสร็จ (progress = ดำเนินการแล้ว)
@@ -486,10 +550,12 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
               <button onClick={() => { setHisProvSearch(''); setHisFilterSys('') }}
                 style={{ padding: '6px 12px', border: '1px solid #ef4444', borderRadius: 8, fontSize: 12, background: '#fee2e2', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}>ล้างตัวกรอง</button>
             )}
+            <button onClick={exportHisProvExcel}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #059669', borderRadius: 8, fontSize: 12, background: '#10b981', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+              📥 Export Excel
+            </button>
             {(() => {
-              const fl = hisProvList.filter(o =>
-                (!hisProvSearch || o.province.includes(hisProvSearch)) &&
-                (!hisFilterSys || (o[hisFilterSys] || 0) > 0))
+              const fl = hisProvDisplay
               const sum = k => fl.reduce((a, o) => a + (o[k] || 0), 0)
               return (
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
@@ -499,25 +565,60 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
             })()}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-            แต่ละช่อง HIS = <b style={{ color: 'var(--text-primary)' }}>ติดตั้งแล้ว</b> / <b style={{ color: '#16a34a' }}>ใช้งานจริง</b> (มี OPD visit ย้อนหลัง 3 วัน)
+            แต่ละช่อง HIS = <b style={{ color: 'var(--text-primary)' }}>ติดตั้งแล้ว</b> / <b style={{ color: '#16a34a' }}>ใช้งานจริง</b> (มี OPD visit ย้อนหลัง 3 วัน) · คอลัมน์ <b>%</b> = อัตราใช้งานของ HIS นั้น (ใช้จริง ÷ ติดตั้ง) · คลิกหัวคอลัมน์เพื่อเรียงลำดับ · แถวล่างสุด = ยอดรวมทุกจังหวัด
           </div>
           <div className="chart-card" style={{ marginBottom: 22, padding: 0, overflow: 'auto', maxHeight: 460 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
-                  {['จังหวัด', 'ติดตั้งแล้ว', 'HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ', 'HIS หลัก', 'เริ่มติดตั้ง'].map((h, i) => (
-                    <th key={i} style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'center', fontWeight: 700, color: 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
+                  {[
+                    { label: 'จังหวัด', key: 'province' },
+                    { label: 'ติดตั้งแล้ว', key: 'total' },
+                    { label: '% รวม', key: 'pctTotal' },
+                    { label: 'HOSxP', key: 'HOSxP' },
+                    { label: '% HOSxP', key: 'pct:HOSxP' },
+                    { label: 'JHCIS', key: 'JHCIS' },
+                    { label: '% JHCIS', key: 'pct:JHCIS' },
+                    { label: 'MY PCU', key: 'MY PCU' },
+                    { label: '% MY PCU', key: 'pct:MY PCU' },
+                    { label: 'อื่น ๆ', key: 'อื่น ๆ' },
+                    { label: '% อื่น ๆ', key: 'pct:อื่น ๆ' },
+                    { label: 'ไม่ระบุ', key: 'ไม่ระบุ' },
+                    { label: '% ไม่ระบุ', key: 'pct:ไม่ระบุ' },
+                    { label: 'HIS หลัก', key: 'topHis' },
+                    { label: 'เริ่มติดตั้ง', key: 'firstInstall' },
+                  ].map((h, i) => (
+                    <th key={i} onClick={() => toggleHisSort(h.key)} title="คลิกเพื่อเรียงลำดับ"
+                      style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'center', fontWeight: 700, color: hisSortKey === h.key ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      {h.label}
+                      <span style={{ color: hisSortKey === h.key ? '#2563eb' : '#cbd5e1', marginLeft: 3 }}>
+                        {hisSortKey === h.key ? (hisSortDir === 'asc' ? '▲' : '▼') : '↕'}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {hisProvList
-                  .filter(o => (!hisProvSearch || o.province.includes(hisProvSearch)) && (!hisFilterSys || (o[hisFilterSys] || 0) > 0))
-                  .map((o, i) => (
+                {hisProvDisplay
+                  .map((o, i) => {
+                    // เซลล์ % พร้อม badge สี (p = null → "-")
+                    const pctTd = (p, cellKey) => {
+                      if (p == null) return <td key={cellKey} style={{ padding: '6px 12px', textAlign: 'center', color: '#cbd5e1' }}>-</td>
+                      const c = p >= 80 ? '#16a34a' : p >= 50 ? '#f59e0b' : '#ef4444'
+                      return (
+                        <td key={cellKey} style={{ padding: '6px 12px', textAlign: 'center' }}>
+                          <span style={{ background: c + '22', color: c, padding: '1px 8px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>{p.toFixed(1)}%</span>
+                        </td>
+                      )
+                    }
+                    // % ใช้งานของแต่ละ HIS = ใช้งานจริง ÷ ติดตั้งแล้ว ของ HIS นั้น
+                    const pctCell = (k, cellKey) => pctTd(o[k] ? (o[k + '_use'] || 0) / o[k] * 100 : null, cellKey)
+                    return (
                   <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '6px 12px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{o.province}</td>
                     <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700 }}>{fmt(o.total)}</td>
-                    {[['HOSxP', '#1d4ed8'], ['JHCIS', '#6d28d9'], ['MY PCU', '#0e7490'], ['อื่น ๆ', '#b45309'], ['ไม่ระบุ', '#64748b']].map(([k, col]) => (
+                    {pctTd(o.total ? hisUseTotal(o) / o.total * 100 : null, 'pctTotal')}
+                    {HIS_COLS.flatMap(([k, col]) => [
                       <td key={k} style={{ padding: '6px 12px', textAlign: 'center' }}>
                         {o[k]
                           ? <span style={{ whiteSpace: 'nowrap' }}>
@@ -526,15 +627,57 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                               <b style={{ color: '#16a34a' }}>{o[k + '_use'] || 0}</b>
                             </span>
                           : <span style={{ color: '#cbd5e1' }}>-</span>}
-                      </td>
-                    ))}
+                      </td>,
+                      pctCell(k, k + '%'),
+                    ])}
                     <td style={{ padding: '6px 12px', textAlign: 'center' }}>
                       <span style={{ background: (HIS_COLOR[o.topHis] || '#94a3b8') + '22', color: HIS_COLOR[o.topHis] || '#475569', padding: '1px 8px', borderRadius: 4, fontWeight: 700 }}>{o.topHis}</span>
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'center', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{o.firstInstallStr || '—'}</td>
                   </tr>
-                ))}
+                    )
+                  })}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td style={{ ...hisFootCell, fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>รวมทั้งหมด</td>
+                  <td style={{ ...hisFootCell, textAlign: 'center', fontWeight: 800 }}>{fmt(hisTotals.total)}</td>
+                  {(() => {
+                    const p = hisTotals.total ? (hisUseTotal(hisTotals) / hisTotals.total) * 100 : null
+                    const c = p == null ? '#cbd5e1' : p >= 80 ? '#16a34a' : p >= 50 ? '#f59e0b' : '#ef4444'
+                    return (
+                      <td style={{ ...hisFootCell, textAlign: 'center' }}>
+                        {p == null
+                          ? <span style={{ color: '#cbd5e1' }}>-</span>
+                          : <span style={{ background: c + '22', color: c, padding: '1px 8px', borderRadius: 4, fontWeight: 800, whiteSpace: 'nowrap' }}>{p.toFixed(1)}%</span>}
+                      </td>
+                    )
+                  })()}
+                  {HIS_COLS.flatMap(([k, col]) => {
+                    const inst = hisTotals[k], use = hisTotals[k + '_use']
+                    const p = inst ? (use / inst) * 100 : null
+                    const c = p == null ? '#cbd5e1' : p >= 80 ? '#16a34a' : p >= 50 ? '#f59e0b' : '#ef4444'
+                    return [
+                      <td key={k} style={{ ...hisFootCell, textAlign: 'center', fontWeight: 700 }}>
+                        {inst
+                          ? <span style={{ whiteSpace: 'nowrap' }}>
+                              <b style={{ color: col }}>{fmt(inst)}</b>
+                              <span style={{ color: '#94a3b8' }}> / </span>
+                              <b style={{ color: '#16a34a' }}>{fmt(use)}</b>
+                            </span>
+                          : <span style={{ color: '#cbd5e1' }}>-</span>}
+                      </td>,
+                      <td key={k + '%'} style={{ ...hisFootCell, textAlign: 'center' }}>
+                        {p == null
+                          ? <span style={{ color: '#cbd5e1' }}>-</span>
+                          : <span style={{ background: c + '22', color: c, padding: '1px 8px', borderRadius: 4, fontWeight: 800, whiteSpace: 'nowrap' }}>{p.toFixed(1)}%</span>}
+                      </td>,
+                    ]
+                  })}
+                  <td style={hisFootCell}></td>
+                  <td style={hisFootCell}></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </>
@@ -666,43 +809,54 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
 
             {/* ── กระดานคำนวณ ── */}
             {(() => {
-              // จังหวัดที่ยังมีคนไม่ใช้งาน (notUsingByProv)
-              const candidates = Object.entries(notUsingByProv)
-                .filter(([, list]) => list.length > 0)
-                .sort((a, b) => {
-                  const pctA = installedByProv[a[0]] > 0 ? ((provMap[a[0]]?.count || 0) / installedByProv[a[0]]) * 100 : 0
-                  const pctB = installedByProv[b[0]] > 0 ? ((provMap[b[0]]?.count || 0) / installedByProv[b[0]]) * 100 : 0
-                  return pctB - pctA
+              // แตก รพ.สต. ที่ยังไม่ใช้งาน เป็นรายการย่อย: จังหวัด × HIS เดิม
+              const provPct = p => installedByProv[p] > 0 ? ((provMap[p]?.count || 0) / installedByProv[p]) * 100 : 0
+              const simRows = []
+              const countByKey = {}
+              Object.entries(notUsingByProv).forEach(([prov, list]) => {
+                if (!list.length) return
+                const byHis = {}
+                list.forEach(h => { const k = normHis(h.his); byHis[k] = (byHis[k] || 0) + 1 })
+                const mixed = Object.keys(byHis).length > 1   // จังหวัดที่ รพ.สต. ไม่ใช้งานมีหลาย HIS เดิม
+                ;['HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ'].forEach(hk => {
+                  if (byHis[hk]) {
+                    const key = prov + '||' + hk
+                    simRows.push({ prov, his: hk, count: byHis[hk], key, mixed })
+                    countByKey[key] = byHis[hk]
+                  }
                 })
+              })
+              simRows.sort((a, b) => provPct(b.prov) - provPct(a.prov) || b.count - a.count)
+              const candidates = (simHis ? simRows.filter(r => r.his === simHis) : simRows)
+                .filter(r => !simSingleHis || !r.mixed)
 
-              const simGain = simSelected.reduce((acc, p) => acc + (notUsingByProv[p]?.length || 0), 0)
+              const simGain = simSelected.reduce((acc, k) => acc + (countByKey[k] || 0), 0)
               const simUsing = installedUsing + simGain
               const simPct = installedTotal > 0 ? (simUsing / installedTotal) * 100 : 0
               const curPct  = installedTotal > 0 ? (installedUsing / installedTotal) * 100 : 0
               const pctColor = simPct >= 80 ? '#10b981' : simPct >= 50 ? '#f59e0b' : '#ef4444'
 
-              // คำนวณ greedy เพื่อถึงเป้าหมาย
+              // คำนวณ greedy เพื่อถึงเป้าหมาย (เลือกรายการที่ดันได้มากสุดก่อน)
               const targetPct = Math.min(100, Math.max(0, Number(simTarget) || 80))
               const target80 = installedTotal > 0 ? Math.ceil(installedTotal * (targetPct / 100)) : 0
               const gap80 = Math.max(0, target80 - installedUsing)
               const already80 = curPct >= targetPct
-              // greedy: เรียงตาม gain มากสุดก่อน เพื่อใช้จังหวัดน้อยสุด
-              const greedyCandidates = [...candidates].sort((a, b) => b[1].length - a[1].length)
+              const greedyCandidates = [...candidates].sort((a, b) => b.count - a.count)
               const suggestedSet = new Set()
               let greedyAcc = 0
-              for (const [p, list] of greedyCandidates) {
+              for (const r of greedyCandidates) {
                 if (greedyAcc >= gap80) break
-                suggestedSet.add(p)
-                greedyAcc += list.length
+                suggestedSet.add(r.key)
+                greedyAcc += r.count
               }
               const canReach80 = greedyAcc + installedUsing >= target80
 
               const visibleCandidates = simSearch
-                ? candidates.filter(([p]) => p.includes(simSearch))
+                ? candidates.filter(r => r.prov.includes(simSearch))
                 : candidates
 
-              const toggleProv = (p) => setSimSelected(prev =>
-                prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+              const toggleRow = key => setSimSelected(prev =>
+                prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]
               )
 
               return (
@@ -719,12 +873,25 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                       />
                       <span style={{ fontSize: 11, color: '#64748b' }}>%</span>
                     </div>
-                    {simSelected.length > 0 && (
-                      <button onClick={() => setSimSelected([])}
-                        style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 10px', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#64748b' }}>
-                        ล้างทั้งหมด
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => setSimSelected(prev => [...new Set([...prev, ...visibleCandidates.map(r => r.key)])])}
+                        disabled={visibleCandidates.length === 0}
+                        style={{
+                          fontSize: 11, padding: '2px 10px', borderRadius: 5, fontWeight: 700,
+                          border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb',
+                          cursor: visibleCandidates.length === 0 ? 'default' : 'pointer',
+                          opacity: visibleCandidates.length === 0 ? 0.5 : 1,
+                        }}>
+                        เลือกทั้งหมด{simHis ? ` (${simHis})` : ''}
                       </button>
-                    )}
+                      {simSelected.length > 0 && (
+                        <button onClick={() => setSimSelected([])}
+                          style={{ fontSize: 11, padding: '2px 10px', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#64748b' }}>
+                          ล้างทั้งหมด
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* แถบ 80% target */}
@@ -768,42 +935,60 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     {/* ซ้าย: เลือกจังหวัด */}
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, color: '#64748b' }}>เลือกจังหวัดที่จะดัน ({candidates.length} จังหวัด)</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>เลือกรายการที่จะดัน ({candidates.length})</span>
+                        <select value={simHis} onChange={e => setSimHis(e.target.value)}
+                          style={{ fontSize: 11, padding: '3px 6px', borderRadius: 5, border: '1px solid #cbd5e1', cursor: 'pointer', background: '#fff' }}>
+                          <option value="">ทุก HIS เดิม</option>
+                          {['HOSxP', 'JHCIS', 'MY PCU', 'อื่น ๆ', 'ไม่ระบุ'].map(k => <option key={k} value={k}>{k}</option>)}
+                        </select>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#64748b', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={simSingleHis} onChange={e => setSimSingleHis(e.target.checked)}
+                            style={{ width: 13, height: 13, cursor: 'pointer' }} />
+                          เฉพาะจังหวัด HIS เดียว
+                        </label>
                         <input
                           className="filter-input"
                           placeholder="🔍 ค้นหา..."
                           value={simSearch}
                           onChange={e => setSimSearch(e.target.value)}
-                          style={{ width: 120, fontSize: 11 }}
+                          style={{ width: 110, fontSize: 11 }}
                         />
                       </div>
                       <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {visibleCandidates.map(([prov, list]) => {
-                          const checked = simSelected.includes(prov)
-                          const isSuggested = suggestedSet.has(prov) && !already80
-                          const instP = installedByProv[prov] || 0
-                          const useP = (provMap[prov]?.count || 0)
+                        {visibleCandidates.map(r => {
+                          const checked = simSelected.includes(r.key)
+                          const isSuggested = suggestedSet.has(r.key) && !already80
+                          const instP = installedByProv[r.prov] || 0
+                          const useP = provMap[r.prov]?.count || 0
                           const curP = instP > 0 ? Math.round((useP / instP) * 100) : 0
+                          const hc = HIS_COLOR[r.his] || '#94a3b8'
                           return (
-                            <label key={prov} style={{
+                            <label key={r.key} style={{
                               display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
                               borderRadius: 6, cursor: 'pointer',
                               background: checked ? '#eff6ff' : isSuggested ? '#fffbeb' : '#fff',
                               border: `1px solid ${checked ? '#bfdbfe' : isSuggested ? '#fcd34d' : '#e2e8f0'}`,
                             }}>
-                              <input type="checkbox" checked={checked} onChange={() => toggleProv(prov)}
+                              <input type="checkbox" checked={checked} onChange={() => toggleRow(r.key)}
                                 style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
-                              <span style={{ flex: 1, fontSize: 12, fontWeight: checked ? 700 : 500, color: 'var(--text-primary)' }}>{prov}</span>
+                              <span style={{ flex: 1, fontSize: 12, fontWeight: checked ? 700 : 500, color: 'var(--text-primary)' }}>{r.prov}</span>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: hc, background: hc + '22', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>{r.his}</span>
+                              {r.mixed && (
+                                <span style={{ fontSize: 9, fontWeight: 700, color: '#a16207', background: '#fef9c3', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>ผสม</span>
+                              )}
                               {isSuggested && !checked && (
-                                <span style={{ fontSize: 9, color: '#f59e0b', fontWeight: 800, background: '#fef3c7', borderRadius: 3, padding: '1px 4px', flexShrink: 0 }}>80%</span>
+                                <span style={{ fontSize: 9, color: '#f59e0b', fontWeight: 800, background: '#fef3c7', borderRadius: 3, padding: '1px 4px', flexShrink: 0 }}>{targetPct}%</span>
                               )}
                               <span style={{ fontSize: 10, color: '#64748b', flexShrink: 0 }}>{useP}/{instP}</span>
-                              <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700, flexShrink: 0 }}>+{list.length}</span>
+                              <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700, flexShrink: 0 }}>+{r.count}</span>
                               <span style={{ fontSize: 10, color: curP >= 80 ? '#10b981' : '#94a3b8', fontWeight: curP >= 80 ? 700 : 400, flexShrink: 0 }}>{curP}%</span>
                             </label>
                           )
                         })}
+                        {visibleCandidates.length === 0 && (
+                          <div style={{ textAlign: 'center', padding: '16px', color: '#94a3b8', fontSize: 11 }}>ไม่มีรายการตรงเงื่อนไข</div>
+                        )}
                       </div>
                     </div>
 
@@ -826,7 +1011,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                       {simSelected.length > 0 && (
                         <>
                           <div style={{ textAlign: 'center', fontSize: 13, color: '#10b981', fontWeight: 700 }}>
-                            ↓ ดัน {simSelected.length} จังหวัด (+{fmt(simGain)} แห่ง)
+                            ↓ ดัน {simSelected.length} รายการ (+{fmt(simGain)} แห่ง)
                           </div>
                           <div style={{ background: pctColor + '18', borderRadius: 8, border: `2px solid ${pctColor}`, padding: '14px 14px' }}>
                             <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>คาดการณ์</div>
@@ -854,7 +1039,7 @@ export default function ProductionData({ data, prodLoading, prodError, prodCount
                             </div>
                           </div>
                           <div style={{ fontSize: 11, color: '#64748b', background: '#fff', borderRadius: 6, padding: '6px 10px', border: '1px solid #e2e8f0' }}>
-                            📍 {simSelected.join(' · ')}
+                            📍 {simSelected.map(k => { const [p, h] = k.split('||'); return `${p} (${h})` }).join(' · ')}
                           </div>
                         </>
                       )}
