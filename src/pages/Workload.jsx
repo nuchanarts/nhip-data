@@ -13,9 +13,30 @@ const COLORS = ['#2563eb','#10b981','#f59e0b','#7c3aed','#06b6d4','#f97316','#ef
 // normalize: trim + collapse spaces + lowercase for comparison
 const norm = s => (s||'').trim().replace(/\s+/g,' ')
 
+function SortHeader({ label, sortKey, sort, onClick, style, align }) {
+  const active = sort.key === sortKey
+  const arrow = active ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''
+  return (
+    <span
+      onClick={() => onClick(sortKey)}
+      style={{
+        ...style,
+        textAlign: align,
+        cursor: 'pointer',
+        userSelect: 'none',
+        color: active ? 'var(--text-primary)' : undefined,
+        fontWeight: active ? 700 : undefined,
+      }}
+      title="คลิกเพื่อเรียงลำดับ"
+    >
+      {label}{arrow}
+    </span>
+  )
+}
+
 function Workload({ data }) {
-  const { installList } = data
-  const [sortBy, setSortBy] = useState('total')
+  const { installList, productionVisits = [] } = data
+  const [sort, setSort] = useState({ key: 'total', dir: 'desc' })
   const [search, setSearch] = useState('')
   const [showAlias, setShowAlias] = useState(false)
   // aliasMap: { rawName -> canonicalName }
@@ -32,6 +53,19 @@ function Workload({ data }) {
   // resolve canonical name
   const resolve = name => aliasMap[name] || name
 
+  // OPD sets — for stacked-bar "ผลงานแยกสถานะต่อคน" (ใช้งานจริง vs ส่ง OPD)
+  // ใช้งานจริง = หน่วยที่อยู่ใน productionVisits และมียอด latest > 0
+  // ส่ง OPD = หน่วยที่อยู่ใน productionVisits (มี row ใน sheet ของ production)
+  const opdSets = useMemo(() => {
+    const submitted = new Set()
+    const using = new Set()
+    productionVisits.forEach(p => {
+      submitted.add(p.hospcode)
+      if (p.latest > 0) using.add(p.hospcode)
+    })
+    return { submitted, using }
+  }, [productionVisits])
+
   // build workerMap using resolved names
   const workerMap = useMemo(() => {
     const m = {}
@@ -39,7 +73,7 @@ function Workload({ data }) {
       const raw = norm(r.responsible)
       if (!raw) return
       const name = resolve(raw)
-      if (!m[name]) m[name] = { name, total:0, done:0, inProg:0, notYet:0, active:0, parallel:0, inactive:0, rawNames:new Set() }
+      if (!m[name]) m[name] = { name, total:0, done:0, inProg:0, notYet:0, active:0, parallel:0, inactive:0, opdUsing:0, opdSubmitted:0, opdNone:0, rawNames:new Set() }
       m[name].rawNames.add(raw)
       m[name].total++
       if (r.progress === 'ดำเนินการแล้ว')              m[name].done++
@@ -48,20 +82,40 @@ function Workload({ data }) {
       if (r.status === 'ใช้งานระบบ')                               m[name].active++
       else if (r.status === 'ใช้งานคู่ขนาน')                       m[name].parallel++
       else if (r.status === 'ไม่ได้ใช้งาน' || r.status === 'เลิกใช้งาน') m[name].inactive++
+      // OPD breakdown — only meaningful for installed units
+      if (r.progress === 'ดำเนินการแล้ว') {
+        if (opdSets.using.has(r.hospcode))            m[name].opdUsing++
+        else if (opdSets.submitted.has(r.hospcode))   m[name].opdSubmitted++
+        else                                           m[name].opdNone++
+      }
     })
     return m
-  }, [installList, aliasMap])
+  }, [installList, aliasMap, opdSets])
 
-  const sortFn = {
-    total:  (a,b) => b.total - a.total,
-    done:   (a,b) => b.done  - a.done,
-    inProg: (a,b) => b.inProg- a.inProg,
-    name:   (a,b) => a.name.localeCompare(b.name, 'th'),
+  const SORT_FNS = {
+    name:     (a,b) => a.name.localeCompare(b.name, 'th'),
+    total:    (a,b) => a.total    - b.total,
+    done:     (a,b) => a.done     - b.done,
+    inProg:   (a,b) => a.inProg   - b.inProg,
+    notYet:   (a,b) => a.notYet   - b.notYet,
+    active:   (a,b) => a.active   - b.active,
+    parallel: (a,b) => a.parallel - b.parallel,
+    inactive: (a,b) => a.inactive - b.inactive,
+    progress: (a,b) => (a.total?a.done/a.total:0) - (b.total?b.done/b.total:0),
+  }
+  const sortHeader = key => {
+    setSort(s => s.key === key
+      ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: key === 'name' ? 'asc' : 'desc' })
   }
 
   const allWorkers = Object.values(workerMap)
     .filter(w => w.name !== 'ไม่ระบุ')
-    .sort(sortFn[sortBy] || sortFn.total)
+    .sort((a,b) => {
+      const f = SORT_FNS[sort.key] || SORT_FNS.total
+      const r = f(a, b)
+      return sort.dir === 'asc' ? r : -r
+    })
 
   const filtered = search.trim()
     ? allWorkers.filter(w => w.name.toLowerCase().includes(search.toLowerCase()))
@@ -74,9 +128,9 @@ function Workload({ data }) {
 
   const barData = filtered.map(w=>({
     name: w.name,
-    ดำเนินการแล้ว: w.done,
-    กำลังดำเนินการ: w.inProg,
-    ยังไม่ติดตั้ง: w.notYet,
+    'ใช้งานจริง':       w.opdUsing,
+    'ส่ง OPD แต่ไม่ใช้': w.opdSubmitted,
+    'ไม่ส่ง OPD':       w.opdNone,
   }))
 
   // detect potential duplicates: names that share a common prefix ≥3 chars
@@ -223,8 +277,8 @@ function Workload({ data }) {
       <div className="chart-card" style={{marginBottom:22}}>
         <div className="chart-header">
           <div>
-            <div className="chart-title">จำนวนงานแยกสถานะต่อคน</div>
-            <div className="chart-sub">นับจากคอลัมน์ผู้ดำเนินการ · {fmt(totalWorkers)} คน</div>
+            <div className="chart-title">ผลงานแยกสถานะต่อคน</div>
+            <div className="chart-sub">นับจากหน่วยที่ติดตั้งแล้ว · เทียบ "ใช้งานจริง" (มี OPD &gt; 0) กับการส่ง OPD จริง · {fmt(totalWorkers)} คน</div>
           </div>
           <span className="chart-badge">Stacked</span>
         </div>
@@ -236,17 +290,17 @@ function Workload({ data }) {
                 <XAxis dataKey="name" tick={{fill:'#64748b',fontSize:10}}/>
                 <YAxis tick={{fill:'#64748b',fontSize:11}}/>
                 <Tooltip content={<TT/>}/>
-                <Bar dataKey="ดำเนินการแล้ว"  stackId="a" fill="#10b981">
-                  <LabelList dataKey="ดำเนินการแล้ว" position="top" style={{fill:'#065f46',fontSize:10,fontWeight:600}} formatter={v=>v>0?v:''}/>
+                <Bar dataKey="ใช้งานจริง"        stackId="a" fill="#10b981">
+                  <LabelList dataKey="ใช้งานจริง" position="top" style={{fill:'#065f46',fontSize:10,fontWeight:600}} formatter={v=>v>0?v:''}/>
                 </Bar>
-                <Bar dataKey="กำลังดำเนินการ" stackId="a" fill="#f59e0b"/>
-                <Bar dataKey="ยังไม่ติดตั้ง"   stackId="a" fill="#e2e8f0" radius={[4,4,0,0]}/>
+                <Bar dataKey="ส่ง OPD แต่ไม่ใช้" stackId="a" fill="#f59e0b"/>
+                <Bar dataKey="ไม่ส่ง OPD"        stackId="a" fill="#e2e8f0" radius={[4,4,0,0]}/>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
         <div style={{display:'flex',gap:16,justifyContent:'center',marginTop:8,flexWrap:'wrap'}}>
-          {[['#10b981','ดำเนินการแล้ว'],['#f59e0b','กำลังดำเนินการ'],['#e2e8f0','ยังไม่ติดตั้ง']].map(([c,l])=>(
+          {[['#10b981','ใช้งานจริง (มี OPD)'],['#f59e0b','ส่ง OPD แต่ไม่ใช้'],['#e2e8f0','ไม่ส่ง OPD']].map(([c,l])=>(
             <div key={l} style={{display:'flex',alignItems:'center',gap:4,fontSize:12}}>
               <div style={{width:10,height:10,borderRadius:2,background:c,flexShrink:0}}/>
               <span style={{color:'var(--text-secondary)'}}>{l}</span>
@@ -265,23 +319,6 @@ function Workload({ data }) {
             style={{paddingLeft:32,paddingRight:12,paddingTop:6,paddingBottom:6,borderRadius:8,
               border:'1px solid var(--border)',background:'var(--bg-secondary)',
               color:'var(--text-primary)',fontSize:13,width:220,outline:'none'}}/>
-        </div>
-        <div style={{display:'flex',gap:4,background:'var(--bg-secondary)',borderRadius:8,padding:3,border:'1px solid var(--border)'}}>
-          {[
-            {key:'total', label:'งานรวม'},
-            {key:'done',  label:'เสร็จแล้ว'},
-            {key:'inProg',label:'กำลังทำ'},
-            {key:'name',  label:'ชื่อ'},
-          ].map(s=>(
-            <button key={s.key} onClick={()=>setSortBy(s.key)}
-              style={{padding:'5px 10px',borderRadius:6,border:'none',fontSize:12,cursor:'pointer',
-                background:sortBy===s.key?'var(--bg-card)':'transparent',
-                boxShadow:sortBy===s.key?'0 1px 3px rgba(0,0,0,0.1)':'none',
-                color:sortBy===s.key?'var(--text-primary)':'var(--text-secondary)',
-                fontWeight:sortBy===s.key?700:400}}>
-              {s.label}
-            </button>
-          ))}
         </div>
         <button
           onClick={() => {
@@ -313,15 +350,15 @@ function Workload({ data }) {
       <div className="chart-card" style={{padding:0,overflow:'hidden'}}>
         <div className="lb-header">
           <span style={{width:32}}>#</span>
-          <span style={{flex:1}}>ผู้ดำเนินการ</span>
-          <span style={{width:70,textAlign:'right'}}>รวมงาน</span>
-          <span style={{width:80,textAlign:'right'}}>เสร็จแล้ว</span>
-          <span style={{width:80,textAlign:'right'}}>กำลังทำ</span>
-          <span style={{width:80,textAlign:'right'}}>ยังไม่ทำ</span>
-          <span style={{width:80,textAlign:'right'}}>ใช้งานระบบ</span>
-          <span style={{width:70,textAlign:'right'}}>คู่ขนาน</span>
-          <span style={{width:70,textAlign:'right'}}>ไม่ใช้งาน</span>
-          <span style={{width:150}}>ความคืบหน้า</span>
+          <SortHeader label="ผู้ดำเนินการ" sortKey="name"     sort={sort} onClick={sortHeader} style={{flex:1}} align="left"/>
+          <SortHeader label="รวมงาน"      sortKey="total"    sort={sort} onClick={sortHeader} style={{width:70}}  align="right"/>
+          <SortHeader label="เสร็จแล้ว"   sortKey="done"     sort={sort} onClick={sortHeader} style={{width:80}}  align="right"/>
+          <SortHeader label="กำลังทำ"     sortKey="inProg"   sort={sort} onClick={sortHeader} style={{width:80}}  align="right"/>
+          <SortHeader label="ยังไม่ทำ"    sortKey="notYet"   sort={sort} onClick={sortHeader} style={{width:80}}  align="right"/>
+          <SortHeader label="ใช้งานระบบ"  sortKey="active"   sort={sort} onClick={sortHeader} style={{width:80}}  align="right"/>
+          <SortHeader label="คู่ขนาน"     sortKey="parallel" sort={sort} onClick={sortHeader} style={{width:70}}  align="right"/>
+          <SortHeader label="ไม่ใช้งาน"   sortKey="inactive" sort={sort} onClick={sortHeader} style={{width:70}}  align="right"/>
+          <SortHeader label="ความคืบหน้า" sortKey="progress" sort={sort} onClick={sortHeader} style={{width:150}} align="left"/>
         </div>
         {filtered.map((w,i)=>{
           const donePct   = w.total>0 ? ((w.done/w.total)*100).toFixed(0)   : 0

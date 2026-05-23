@@ -1,8 +1,7 @@
 import html2canvas from 'html2canvas'
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 const COLORS = ['#2563eb','#10b981','#f59e0b','#ef4444','#7c3aed','#06b6d4','#f97316','#84cc16']
-const JOB_COLORS = {'รอติดตั้ง':'#f59e0b','ใช้งานระบบ':'#10b981','ใช้งานคู่ขนาน':'#06b6d4','ไม่ได้ใช้งาน':'#ef4444','เลิกใช้งาน':'#94a3b8'}
 const TT = ({ active, payload, label }) => active && payload?.length ? (
   <div className="tt"><div className="tt-label">{label}</div>
     {payload.map((p,i)=><div key={i} className="tt-value" style={{color:p.color||'var(--text-primary)'}}>{p.name?`${p.name}: `:''}{Number(p.value).toLocaleString()}</div>)}
@@ -320,7 +319,6 @@ export default function Overview({ data }) {
   const stdbyTotal   = Object.values(standby_status||{}).reduce((a,b)=>a+b,0)||1
   const stdbyPct     = ((stdbyDone/stdbyTotal)*100).toFixed(0)
 
-  const jobPieData = Object.entries(job_status).map(([name,value])=>({name,value}))
   const regionData = Object.entries(regions).map(([k,v])=>({name:`เขต ${k}`,value:v}))
   const monthlyData = Object.entries(monthly).map(([k,v])=>{
     const [yr,mo]=k.split('-')
@@ -494,8 +492,8 @@ export default function Overview({ data }) {
       </div>
 
       {/* Charts row 1 */}
-      <div className="section-label">แนวโน้มการติดตั้งและสถานะ</div>
-      <div className="charts-row charts-row-3">
+      <div className="section-label">แนวโน้มการติดตั้ง</div>
+      <div className="charts-row charts-row-full">
         <div className="chart-card">
           <div className="chart-header">
             <div><div className="chart-title">จำนวนการติดตั้งรายเดือน</div>
@@ -516,29 +514,6 @@ export default function Overview({ data }) {
                 fill="url(#aBlue)" dot={{fill:'#2563eb',r:4}} activeDot={{r:6,strokeWidth:0}} name="จำนวน"/>
             </AreaChart>
           </ResponsiveContainer>
-        </div>
-        <div className="chart-card">
-          <div className="chart-header">
-            <div><div className="chart-title">สถานะงาน</div>
-              <div className="chart-sub">จำแนกตามประเภท</div></div>
-          </div>
-          <div className="donut-container">
-            <ResponsiveContainer width={150} height={150}>
-              <PieChart><Pie data={jobPieData} cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={3} dataKey="value">
-                {jobPieData.map((e,i)=><Cell key={i} fill={JOB_COLORS[e.name]||COLORS[i%COLORS.length]}/>)}
-              </Pie><Tooltip content={<TT/>}/></PieChart>
-            </ResponsiveContainer>
-            <div className="donut-legend">
-              {jobPieData.map((item,i)=>(
-                <div key={i} className="leg-item">
-                  <div className="leg-dot" style={{background:JOB_COLORS[item.name]||COLORS[i%COLORS.length]}}/>
-                  <span className="leg-name">{item.name}</span>
-                  <span className="leg-val">{fmt(item.value)}</span>
-                  <span className="leg-pct">({((item.value/totalJS)*100).toFixed(0)}%)</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 

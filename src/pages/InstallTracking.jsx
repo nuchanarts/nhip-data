@@ -114,6 +114,7 @@ export default function InstallTracking({ data }) {
   const [inactiveStatus, setInactiveStatus] = useState('')
   const [inactiveProvince, setInactiveProvince] = useState('')
   const [inactiveView, setInactiveView] = useState('list')
+  const [inactiveSort, setInactiveSort] = useState({ key: '', dir: 'asc' })
   const [expandedGroup, setExpandedGroup] = useState(null)
   const PAGE_SIZE = 20
   const totalJS = Object.values(job_status).reduce((a,b)=>a+b,0) || 1
@@ -216,8 +217,27 @@ export default function InstallTracking({ data }) {
       || (r.remark||'').toLowerCase().includes(q)
       || (r.responsible||'').toLowerCase().includes(q)
   })
-  const inactiveTotalPages = Math.max(1, Math.ceil(inactiveFiltered.length / PAGE_SIZE))
-  const inactivePaged = inactiveFiltered.slice((inactivePage-1)*PAGE_SIZE, inactivePage*PAGE_SIZE)
+  const inactiveSorted = (() => {
+    if (!inactiveSort.key) return inactiveFiltered
+    const getVal = (r, k) => {
+      if (k === 'province') return (r.province||'').replace(/^\d+-/,'')
+      return (r[k] || '').toString()
+    }
+    const sorted = [...inactiveFiltered].sort((a,b) => {
+      const va = getVal(a, inactiveSort.key)
+      const vb = getVal(b, inactiveSort.key)
+      return va.localeCompare(vb, 'th', { numeric: true })
+    })
+    return inactiveSort.dir === 'asc' ? sorted : sorted.reverse()
+  })()
+  const inactiveTotalPages = Math.max(1, Math.ceil(inactiveSorted.length / PAGE_SIZE))
+  const inactivePaged = inactiveSorted.slice((inactivePage-1)*PAGE_SIZE, inactivePage*PAGE_SIZE)
+  const sortInactiveHeader = key => {
+    setInactiveSort(s => s.key === key
+      ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: 'asc' })
+    setInactivePage(1)
+  }
 
   // group by remark
   const groupByRemark = Object.entries(
@@ -674,9 +694,30 @@ export default function InstallTracking({ data }) {
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                 <thead>
                   <tr style={{background:'var(--bg-secondary)',borderBottom:'2px solid var(--border)'}}>
-                    {['#','รหัส','ชื่อ รพ.สต.','จังหวัด','สถานะ','ระบบ HIS เดิม','ผู้รับผิดชอบ','หมายเหตุ'].map(h=>(
-                      <th key={h} style={{padding:'8px 12px',textAlign:'left',fontWeight:700,color:'var(--text-secondary)',fontSize:12,whiteSpace:'nowrap'}}>{h}</th>
-                    ))}
+                    {[
+                      { label:'#', key:'' },
+                      { label:'รหัส', key:'hospcode' },
+                      { label:'ชื่อ รพ.สต.', key:'name' },
+                      { label:'จังหวัด', key:'province' },
+                      { label:'สถานะ', key:'status' },
+                      { label:'ระบบ HIS เดิม', key:'his' },
+                      { label:'ผู้รับผิดชอบ', key:'responsible' },
+                      { label:'หมายเหตุ', key:'remark' },
+                    ].map(h=>{
+                      const active = inactiveSort.key === h.key && h.key
+                      const arrow = active ? (inactiveSort.dir === 'asc' ? ' ▲' : ' ▼') : ''
+                      return (
+                        <th key={h.label}
+                          onClick={h.key ? () => sortInactiveHeader(h.key) : undefined}
+                          style={{padding:'8px 12px',textAlign:'left',fontWeight:700,
+                            color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontSize:12,whiteSpace:'nowrap',
+                            cursor: h.key ? 'pointer' : 'default',
+                            userSelect:'none'}}>
+                          {h.label}{arrow}
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody>

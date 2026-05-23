@@ -266,8 +266,83 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
         </div>
       </div>
 
-      {/* Fix Completion Calculator */}
+      {/* งานของ Dev แต่ละคน */}
       {(() => {
+        const DONE_STATUSES = new Set(['แก้ไขเรียบร้อย','ดำเนินการแล้ว','เสร็จสิ้น','เสร็จแล้ว'])
+        const byDev = {}
+        ;(defectList || []).forEach(r => {
+          const dev = (r['นักพัฒนา'] || r['ผู้รับผิดชอบ'] || '').trim() || '— ยังไม่ระบุ —'
+          const status = (r['สถานะ'] || r.__status || '').trim()
+          const sys = (r['ระบบงาน'] || r.__system || '').trim() || '—'
+          if (!byDev[dev]) byDev[dev] = { dev, total:0, done:0, pending:0, urgent:0, systems:{} }
+          byDev[dev].total++
+          if (DONE_STATUSES.has(status)) byDev[dev].done++
+          else byDev[dev].pending++
+          const u = (r['ความเร่งด่วน'] || r.__urgency || '').trim()
+          if (u === 'ด่วน' || u === 'ด่วนมาก') byDev[dev].urgent++
+          byDev[dev].systems[sys] = (byDev[dev].systems[sys] || 0) + 1
+        })
+        const devRows = Object.values(byDev).map(d => ({
+          ...d,
+          topSys: Object.entries(d.systems).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—',
+        })).sort((a,b) => b.pending - a.pending || b.total - a.total)
+
+        if (devRows.length === 0) return null
+        return (
+          <>
+            <div className="section-label" style={{marginTop:24}}>👤 งานของ Dev แต่ละคน — ใครมีงานอะไร เหลือเท่าไหร่</div>
+            <div className="chart-card" style={{padding:0, overflow:'hidden'}}>
+              <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+                <thead>
+                  <tr style={{background:'var(--bg-secondary)', borderBottom:'2px solid var(--border)'}}>
+                    {['Dev','งานทั้งหมด','เสร็จแล้ว','เหลือ','ด่วน','ระบบหลัก','% เสร็จ'].map(h => (
+                      <th key={h} style={{padding:'10px 14px', textAlign: h==='Dev'||h==='ระบบหลัก' ? 'left' : 'center',
+                        fontWeight:700, color:'var(--text-secondary)', fontSize:12, whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {devRows.map((d,i) => {
+                    const pct = d.total>0 ? (d.done/d.total)*100 : 0
+                    const pctColor = pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444'
+                    return (
+                      <tr key={i} style={{borderBottom:'1px solid var(--border)', background: i%2===0?'transparent':'var(--bg-secondary)'}}>
+                        <td style={{padding:'8px 14px', fontWeight:600, color:'var(--text-primary)'}}>{d.dev}</td>
+                        <td style={{padding:'8px 14px', textAlign:'center', fontWeight:700}}>{fmt(d.total)}</td>
+                        <td style={{padding:'8px 14px', textAlign:'center', color:'#10b981', fontWeight:600}}>{fmt(d.done)}</td>
+                        <td style={{padding:'8px 14px', textAlign:'center', color:d.pending>0?'#ef4444':'#94a3b8', fontWeight:700}}>{fmt(d.pending)}</td>
+                        <td style={{padding:'8px 14px', textAlign:'center'}}>
+                          {d.urgent>0 ? <span style={{background:'#fee2e2', color:'#dc2626', padding:'2px 8px', borderRadius:10, fontSize:11, fontWeight:700}}>{d.urgent}</span> : <span style={{color:'#cbd5e1'}}>—</span>}
+                        </td>
+                        <td style={{padding:'8px 14px', color:'var(--text-secondary)', fontSize:12}}>{d.topSys}</td>
+                        <td style={{padding:'8px 14px', textAlign:'center'}}>
+                          <span style={{background:pctColor+'22', color:pctColor, padding:'2px 10px', borderRadius:4, fontWeight:700, fontSize:12, whiteSpace:'nowrap'}}>
+                            {pct.toFixed(0)}%
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{borderTop:'2px solid var(--border)', background:'var(--bg-secondary)', fontWeight:800}}>
+                    <td style={{padding:'10px 14px'}}>รวม {devRows.length} คน</td>
+                    <td style={{padding:'10px 14px', textAlign:'center'}}>{fmt(devRows.reduce((a,b)=>a+b.total,0))}</td>
+                    <td style={{padding:'10px 14px', textAlign:'center', color:'#10b981'}}>{fmt(devRows.reduce((a,b)=>a+b.done,0))}</td>
+                    <td style={{padding:'10px 14px', textAlign:'center', color:'#ef4444'}}>{fmt(devRows.reduce((a,b)=>a+b.pending,0))}</td>
+                    <td style={{padding:'10px 14px', textAlign:'center', color:'#dc2626'}}>{fmt(devRows.reduce((a,b)=>a+b.urgent,0))}</td>
+                    <td style={{padding:'10px 14px', color:'var(--text-muted)'}}>—</td>
+                    <td style={{padding:'10px 14px'}}></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </>
+        )
+      })()}
+
+      {/* Fix Completion Calculator — hidden per redesign */}
+      {false && (() => {
         const DONE_STATUS = new Set(['แก้ไขเรียบร้อย','ดำเนินการแล้ว','เสร็จสิ้น','เสร็จแล้ว'])
         const devList = [...new Set((defectList||[]).map(r=>r['นักพัฒนา']).filter(Boolean))].sort()
         const platformList = [...new Set((defectList||[]).map(r=>r['แพลตฟอร์ม']).filter(Boolean))].sort()
@@ -529,8 +604,8 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
         )
       })()}
 
-      {/* Kanban รายสัปดาห์ */}
-      {(() => {
+      {/* Kanban รายสัปดาห์ — hidden per redesign */}
+      {false && (() => {
         const DONE_STATUS  = new Set(['แก้ไขเรียบร้อย','ดำเนินการแล้ว','เสร็จสิ้น','เสร็จแล้ว'])
         const URG_ORDER    = {'ด่วนมาก':0,'ด่วน':1,'ปกติ':2,'ไม่ด่วน':3,'ต่ำ':4}
         const DAY_TH       = ['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.']

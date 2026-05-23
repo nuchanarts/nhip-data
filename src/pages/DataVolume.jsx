@@ -107,24 +107,6 @@ export default function DataVolume({ data }) {
       <div className="page-title">📊 ข้อมูลการติดตั้งระบบ</div>
       <div className="page-desc">ข้อมูลผู้ติดตั้ง — รายชื่อ รพ.สต. เขต จังหวัด อำเภอ วันที่ติดตั้ง Migration และสถานะการใช้งาน</div>
 
-      {/* KPI */}
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginTop:20}}>
-        {[
-          {color:'c-blue',  icon:'🏥', val:fmt(total||0),        label:'รพ.สต. ทั้งหมด',      pct:'100%'},
-          {color:'c-green', icon:'✅', val:fmt(totalDone),        label:'ดำเนินการแล้ว',       pct:`${donePct}%`},
-          {color:'c-orange',icon:'📦', val:fmt(migrationDone||0), label:'Migration เสร็จแล้ว', pct:`${migPct}%`},
-          {color:'c-purple',icon:'⏳', val:fmt((total||0)-totalDone), label:'ยังไม่ดำเนินการ', pct:`${(100-+donePct).toFixed(1)}%`},
-        ].map((k,i)=>(
-          <div key={i} className={`kpi-card ${k.color}`}>
-            <div className="kpi-icon">{k.icon}</div>
-            <span className="kpi-pct">{k.pct}</span>
-            <div className="kpi-value">{k.val}</div>
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-bar"><div className="kpi-bar-fill" style={{width:k.pct}}/></div>
-          </div>
-        ))}
-      </div>
-
       {/* Thailand Map */}
       <div className="section-label" style={{marginTop:24}}>แผนที่ประเทศไทย — จำนวน รพ.สต. แยกจังหวัด</div>
       <div className="chart-card" style={{marginBottom:22}}>

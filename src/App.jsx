@@ -3,7 +3,6 @@ import * as XLSX from 'xlsx'
 import installDataRaw from './data/installData.json'
 import Sidebar from './components/Sidebar'
 import Overview from './pages/Overview'
-import FacilityMgmt from './pages/FacilityMgmt'
 import InstallTracking from './pages/InstallTracking'
 import DataVolume from './pages/DataVolume'
 import CallCenter from './pages/CallCenter'
@@ -458,7 +457,6 @@ function parseExcel(file) {
 
 const PAGES = {
   overview:   Overview,
-  facility:   FacilityMgmt,
   install:    InstallTracking,
   volume:     DataVolume,
   production: ProductionData,
@@ -502,7 +500,8 @@ export default function App() {
   const defectCountdownRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
-  const [page, setPage] = useState('overview')
+  const [page, setPage] = useState('production')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [showGS, setShowGS] = useState(false)
   const [gsUrl, setGsUrl] = useState('https://docs.google.com/spreadsheets/d/1Y4FANer87OduQcK7XctCjJ0FBEKTHlXJ4aMZklcqzFU/edit?usp=sharing')
@@ -649,6 +648,13 @@ export default function App() {
     if (page === 'defect') loadDefectSheet()
   }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // โหลดข้อมูลหลัก (Google Sheet) ใหม่ทุกครั้งที่เปลี่ยนเมนู (ข้ามรอบแรก mount)
+  const navFirstRef = useRef(true)
+  useEffect(() => {
+    if (navFirstRef.current) { navFirstRef.current = false; return }
+    handleGSheet(true)
+  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // โหลด production sheet ใหม่ทุกครั้งที่ "เปลี่ยนมา" หน้า ข้อมูลการใช้งาน
   // ข้ามรอบแรก (mount) เพราะ effect โหลดครั้งแรกทำงานอยู่แล้ว — กัน fetch ซ้ำซ้อน
   const prodNavFirstRef = useRef(true)
@@ -668,10 +674,11 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar current={page} onNavigate={setPage} />
+      <Sidebar current={page} onNavigate={setPage} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="app-main">
         <header className="header">
           <div className="header-left">
+            <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} title="เปิดเมนู" aria-label="เปิดเมนู">☰</button>
             <div className="header-title">
               <h1>NHIP Dashboard</h1>
               <p>ระบบติดตามสถิติการติดตั้ง รพ.สต. ทั่วประเทศ</p>
