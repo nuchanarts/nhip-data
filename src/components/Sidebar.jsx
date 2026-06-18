@@ -9,7 +9,7 @@ const MENU = [
   // { key: 'training',  icon: '🎓', label: 'Training Support',    sub: 'ปัญหาระหว่างอบรม' },
   { key: 'workload',  icon: '⏱️', label: 'Workload Tracking',   sub: 'ชั่วโมงทำงาน' },
   { key: 'installer', icon: '👤', label: 'ผลสำเร็จรายบุคคล',     sub: 'Installer Management' },
-  { key: 'retrokey',  icon: '🔁', label: 'คีย์ย้อนหลัง',        sub: 'คาดว่าใช้คู่ขนาน' },
+  // { key: 'retrokey',  icon: '🔁', label: 'คีย์ย้อนหลัง',        sub: 'คาดว่าใช้คู่ขนาน' },
   { key: 'hosplist',  icon: '🏨', label: 'รายชื่อ รพ.สต.',      sub: 'Hospital List' },
 ]
 

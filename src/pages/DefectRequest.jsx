@@ -19,7 +19,7 @@ const TT = ({ active, payload, label }) => active && payload?.length ? (
   </div>) : null
 
 export default function DefectRequest({ data, defectLoading, defectError, defectCountdown, defectSheetUrl, setDefectSheetUrl, onRetryDefect }) {
-  const { defect_status, defect_system, defect_urgency, defectList, defectColumns = [] } = data
+  const { defectList, defectColumns = [] } = data
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterUrgency, setFilterUrgency] = useState('')
@@ -76,19 +76,69 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
   }, [])
   const fmtCountdown = s => `${Math.floor((s||0)/60)}:${String((s||0)%60).padStart(2,'0')}`
 
-  const ds = defect_status || {}
-  const dsys = defect_system || {}
-  const du = defect_urgency || {}
+  // ── Filter + derived aggregates (shared ทั้งหน้า — update ตาม filterStatus/Urgency/Platform/Type/search) ──
+  const cols = defectColumns.length > 0 ? defectColumns : ['วันที่','ระบบงาน','สถานะระบบ','ด่วน/ไม่ด่วน','สถานะดำเนินการ','หัวข้อ/รายละเอียด','สถานะทำ Mantis','ผู้รับผิดชอบ']
+  const COL_KEY_FALLBACK = {
+    'วันที่':'date','ระบบงาน':'system','สถานะระบบ':'sys_status',
+    'ด่วน/ไม่ด่วน':'urgency','สถานะดำเนินการ':'status',
+    'หัวข้อ/รายละเอียด':'detail','สถานะทำ Mantis':'mantis','ผู้รับผิดชอบ':'responsible',
+  }
+  const cellVal    = (r, col) => r[col] || r[COL_KEY_FALLBACK[col]] || ''
+  const rowStatus  = r => r.__status  || r.status  || r['สถานะ'] || ''
+  const rowUrgency = r => r.__urgency || r.urgency || r['ความเร่งด่วน'] || ''
+  const rowSystem  = r => (r['ระบบงาน'] || r.__system || r.system || '').trim()
 
-  const total = Object.values(ds).reduce((a,b)=>a+b,0) || 1
-  const done  = (ds['ดำเนินการแล้ว']||0) + (ds['แก้ไขเรียบร้อย']||0)
-  const pending = total - done
-  const urgent = du['ด่วน']||0
-  const normal = (du['ปกติ']||0) + (du['ไม่ด่วน']||0)
+  const uniqueStatuses  = [...new Set((defectList||[]).map(rowStatus).filter(Boolean))]
+  const uniqueUrgency   = [...new Set((defectList||[]).map(rowUrgency).filter(Boolean))]
+  const uniquePlatforms = [...new Set((defectList||[]).map(r=>r['แพลตฟอร์ม']).filter(Boolean))]
+  const uniqueTypes     = [...new Set((defectList||[]).map(r=>r['ประเภทปัญหา']).filter(Boolean))]
 
-  const statusData = Object.entries(ds).map(([name,value])=>({name,value,color:STATUS_COLOR[name]||'#94a3b8'}))
-  const sysData = Object.entries(dsys).map(([name,value])=>({name,value})).slice(0,10)
-  const urgData = [{name:'ด่วน',value:urgent},{name:'ปกติ',value:normal}]
+  const filtered = (defectList||[]).filter(r => {
+    const detail = r['รายละเอียด'] || r['เจอปัญหา'] || r['หัวข้อ/รายละเอียด'] || r.detail || ''
+    if (!detail.trim()) return false
+    if (filterStatus   && rowStatus(r)    !== filterStatus)   return false
+    if (filterUrgency  && rowUrgency(r)   !== filterUrgency)  return false
+    if (filterPlatform && r['แพลตฟอร์ม'] !== filterPlatform) return false
+    if (filterType     && r['ประเภทปัญหา'] !== filterType)   return false
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      return cols.some(col => cellVal(r, col).toLowerCase().includes(q))
+    }
+    return true
+  })
+
+  const fStatus = {}, fSystem = {}, fUrgency = {}
+  filtered.forEach(r => {
+    const s = rowStatus(r);   if (s)   fStatus[s]   = (fStatus[s]||0)+1
+    const u = rowUrgency(r);  if (u)   fUrgency[u]  = (fUrgency[u]||0)+1
+    const sys = rowSystem(r); if (sys) fSystem[sys] = (fSystem[sys]||0)+1
+  })
+
+  const DONE_STATUSES = new Set(['แก้ไขเรียบร้อย','ดำเนินการแล้ว','เสร็จสิ้น','เสร็จแล้ว'])
+  const URGENT_VALS   = new Set(['ด่วน','ด่วนมาก','ด่วนที่สุด'])
+  const total   = filtered.length || 1
+  const done    = filtered.filter(r => DONE_STATUSES.has(rowStatus(r))).length
+  const pending = filtered.length - done
+  const urgent  = filtered.filter(r => URGENT_VALS.has(rowUrgency(r))).length
+  const normal  = filtered.length - urgent
+
+  const statusData = Object.entries(fStatus).map(([name,value])=>({name,value,color:STATUS_COLOR[name]||'#94a3b8'}))
+  const sysData    = Object.entries(fSystem).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([name,value])=>({name,value}))
+  const urgData    = [{name:'ด่วน',value:urgent},{name:'ปกติ',value:normal}]
+
+  // Export filtered rows → Excel
+  const exportExcel = () => {
+    const rows = filtered.map((r,i) => {
+      const obj = { '#': i+1 }
+      cols.forEach(col => { obj[col] = cellVal(r, col) })
+      return obj
+    })
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{note:'ไม่มีข้อมูล'}])
+    XLSX.utils.book_append_sheet(wb, ws, 'Defect & Request')
+    const ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,16)
+    XLSX.writeFile(wb, `defect-list-${ts}.xlsx`)
+  }
 
   return (
     <div className="page">
@@ -266,20 +316,18 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
         </div>
       </div>
 
-      {/* งานของ Dev แต่ละคน */}
+      {/* งานของ Dev แต่ละคน — update ตาม filter ของรายการทั้งหมด */}
       {(() => {
-        const DONE_STATUSES = new Set(['แก้ไขเรียบร้อย','ดำเนินการแล้ว','เสร็จสิ้น','เสร็จแล้ว'])
         const byDev = {}
-        ;(defectList || []).forEach(r => {
+        filtered.forEach(r => {
           const dev = (r['นักพัฒนา'] || r['ผู้รับผิดชอบ'] || '').trim() || '— ยังไม่ระบุ —'
-          const status = (r['สถานะ'] || r.__status || '').trim()
-          const sys = (r['ระบบงาน'] || r.__system || '').trim() || '—'
+          const status = rowStatus(r)
+          const sys = rowSystem(r) || '—'
           if (!byDev[dev]) byDev[dev] = { dev, total:0, done:0, pending:0, urgent:0, systems:{} }
           byDev[dev].total++
           if (DONE_STATUSES.has(status)) byDev[dev].done++
           else byDev[dev].pending++
-          const u = (r['ความเร่งด่วน'] || r.__urgency || '').trim()
-          if (u === 'ด่วน' || u === 'ด่วนมาก') byDev[dev].urgent++
+          if (URGENT_VALS.has(rowUrgency(r))) byDev[dev].urgent++
           byDev[dev].systems[sys] = (byDev[dev].systems[sys] || 0) + 1
         })
         const devRows = Object.values(byDev).map(d => ({
@@ -930,27 +978,8 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
         )
       })()}
 
-      {/* Detail Table — dynamic columns + resizable */}
+      {/* Detail Table — dynamic columns + resizable. ใช้ cols/filtered/cellVal จาก outer scope */}
       {(() => {
-        const cols = defectColumns.length > 0 ? defectColumns : ['วันที่','ระบบงาน','สถานะระบบ','ด่วน/ไม่ด่วน','สถานะดำเนินการ','หัวข้อ/รายละเอียด','สถานะทำ Mantis','ผู้รับผิดชอบ']
-        const uniqueStatuses  = [...new Set((defectList||[]).map(r=>r.__status).filter(Boolean))]
-        const uniqueUrgency   = [...new Set((defectList||[]).map(r=>r.__urgency).filter(Boolean))]
-        const uniquePlatforms = [...new Set((defectList||[]).map(r=>r['แพลตฟอร์ม']).filter(Boolean))]
-        const uniqueTypes     = [...new Set((defectList||[]).map(r=>r['ประเภทปัญหา']).filter(Boolean))]
-        const filtered = (defectList||[]).filter(r => {
-          // แสดงเฉพาะ record ที่มีข้อมูลในคอลัมน์ หัวข้อ/รายละเอียด
-          const detail = r['เจอปัญหา'] || r['หัวข้อ/รายละเอียด'] || r.detail || ''
-          if (!detail.trim()) return false
-          if (filterStatus   && r.__status           !== filterStatus)   return false
-          if (filterUrgency  && r.__urgency          !== filterUrgency)  return false
-          if (filterPlatform && r['แพลตฟอร์ม']      !== filterPlatform) return false
-          if (filterType     && r['ประเภทปัญหา']     !== filterType)     return false
-          if (search.trim()) {
-            const q = search.toLowerCase()
-            return cols.some(col => (r[col]||'').toLowerCase().includes(q))
-          }
-          return true
-        })
         const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
         const paged = pageSize === 0 ? filtered : filtered.slice((page-1)*pageSize, page*pageSize)
         return (
@@ -977,6 +1006,18 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
                   {uniqueTypes.map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
                 <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:'auto'}}>
+                  <button
+                    onClick={exportExcel}
+                    disabled={filtered.length === 0}
+                    title="Export ข้อมูลตามที่กรองเป็นไฟล์ Excel"
+                    style={{
+                      padding:'6px 12px', borderRadius:6, fontSize:12, fontWeight:600,
+                      background: filtered.length === 0 ? '#f1f5f9' : '#10b981',
+                      color: filtered.length === 0 ? '#94a3b8' : '#fff',
+                      border: '1px solid ' + (filtered.length === 0 ? '#e2e8f0' : '#059669'),
+                      cursor: filtered.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >📥 Export Excel</button>
                   <span style={{fontSize:11,color:'var(--text-muted)'}}>แสดง</span>
                   <select
                     className="filter-select"
@@ -1041,7 +1082,7 @@ export default function DefectRequest({ data, defectLoading, defectError, defect
                       <tr key={i} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'var(--bg-secondary)'}}>
                         <td style={{padding:'6px 10px',color:'var(--text-muted)',fontSize:11,whiteSpace:'nowrap'}}>{pageSize === 0 ? i+1 : (page-1)*pageSize+i+1}</td>
                         {cols.map(col => {
-                          const val = r[col] || ''
+                          const val = cellVal(r, col)
                           const isStatus  = STATUS_COLOR[val] && val
                           const isUrgency = !isStatus && URG_COLOR[val] && val
                           return (

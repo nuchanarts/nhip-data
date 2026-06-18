@@ -17,7 +17,8 @@ import RetroKey from './pages/RetroKey'
 import { useGlobalResizableColumns } from './hooks/useResizableColumns'
 import './index.css'
 
-const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1a6nP3FBPka-DJeEzUk40_XiNYch_Eym-/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
+const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1GIDlqwv4fCXES4wQEzzJjJ0CK979FKB-/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
+const PROD_SHEET_STORAGE_KEY = 'nhip:prodSheetUrl'
 const DEFECT_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1voV3mHQi7bH2PbBeWaVrk0EaUs-9BnqMpKc53oI__RE/edit?usp=sharing'
 const DEFECT_REFRESH_MS = 10 * 60 * 1000 // 10 นาที
 
@@ -32,10 +33,10 @@ function getSheetExportUrl(sheetUrl) {
 function getProdExportUrl(sheetUrl) { return getSheetExportUrl(sheetUrl) }
 
 const DEFECT_COLUMNS_ORDER = [
-  'ลำดับ','เจอปัญหา','แพลตฟอร์ม','ประเภทปัญหา','ความเร่งด่วน','สถานะ','ระบบงาน',
-  'ส่งออกข้อมูล 43 แฟ้ม','PM รับผิดชอบ','ประเภท','ข้อมูลลิงค์ Taiga หรือ MANTIS',
-  'นักพัฒนา','ระยะเวลาพัฒนา(ชม.)','เริ่มพัฒนา','พัฒนาเสร็จ','ลำดับการแก้ไข Dev',
-  'วันที่ต้องได้','วันที่เสร็จ','Tester','ทำไฟล์ taiga หริือ mantis','รหัส MANTIS','จัดทำไฟล์แก้ไข',
+  'แพลตฟอร์ม','ประเภทปัญหา','ความเร่งด่วน','สถานะ','ระบบงาน','รายละเอียด','Devขอเคสเพิ่ม',
+  'PM รับผิดชอบ','ประเภท','ข้อมูลลิงค์ Taiga หรือ MANTIS','นักพัฒนา','ระยะเวลาพัฒนา(ชม.)',
+  'เริ่มพัฒนา','พัฒนาเสร็จ','ลำดับการแก้ไข Dev','วันที่ต้องได้','วันที่เสร็จ',
+  'Tester','ทำไฟล์ taiga หริือ mantis','รหัส MANTIS','จัดทำไฟล์แก้ไข',
 ]
 
 function parseDefectSheetOnly(ab) {
@@ -43,8 +44,9 @@ function parseDefectSheetOnly(ab) {
   console.log('📋 Defect sheets:', wb.SheetNames)
 
   // หา sheet+row ที่มี column ตรงกับที่รู้จริง
-  // ใช้ exact match ก่อน — 'ลำดับ' หรือ 'สถานะ' หรือ 'ความเร่งด่วน'
-  const ANCHOR_COLS = new Set(['ลำดับ','สถานะ','ความเร่งด่วน','เจอปัญหา','ระบบงาน','แพลตฟอร์ม'])
+  // ANCHOR_COLS ใช้สำหรับระบุ defect-sheet ทั่วไป; STRONG_ANCHORS เป็นคอลัมน์ที่
+  // มีเฉพาะใน sheet "ข้อมูลขอแก้ไขโปรแกรม" — ใช้เป็น tiebreaker
+  const ANCHOR_COLS = new Set(['ลำดับ','สถานะ','ความเร่งด่วน','เจอปัญหา','ระบบงาน','แพลตฟอร์ม','รายละเอียด','Devขอเคสเพิ่ม','Tester','จัดทำไฟล์แก้ไข','ทำไฟล์ taiga หริือ mantis'])
   let bestRows = [], bestHeaderIdx = -1, bestScore = 0
 
   for (const sn of wb.SheetNames) {
@@ -52,8 +54,9 @@ function parseDefectSheetOnly(ab) {
     for (let ri = 0; ri < Math.min(10, r.length); ri++) {
       if (!r[ri]) continue
       const cells = r[ri].map(c => String(c||'').trim())
-      const score = cells.filter(c => ANCHOR_COLS.has(c)).length
-      console.log(`📋 Sheet "${sn}" row ${ri}: score=${score}`, cells.filter(c => ANCHOR_COLS.has(c)))
+      // นับเฉพาะ anchor ที่ unique (ป้องกัน sheet ที่มีหัวคอลัมน์ซ้ำเช่น 'ลำดับ' โผล่ 2 ครั้ง)
+      const score = new Set(cells.filter(c => ANCHOR_COLS.has(c))).size
+      console.log(`📋 Sheet "${sn}" row ${ri}: score=${score}`, [...new Set(cells.filter(c => ANCHOR_COLS.has(c)))])
       if (score > bestScore) {
         bestScore = score; bestRows = r; bestHeaderIdx = ri
       }
@@ -489,7 +492,14 @@ export default function App() {
   const [prodLoading, setProdLoading] = useState(false)
   const [prodError, setProdError] = useState('')
   const [prodCountdown, setProdCountdown] = useState(PROD_REFRESH_MS / 1000)
-  const [prodSheetUrl, setProdSheetUrl] = useState(PROD_SHEET_DEFAULT_URL)
+  const [prodSheetUrl, setProdSheetUrl] = useState(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' && localStorage.getItem(PROD_SHEET_STORAGE_KEY)
+      return saved || PROD_SHEET_DEFAULT_URL
+    } catch {
+      return PROD_SHEET_DEFAULT_URL
+    }
+  })
   const prodAutoRefreshRef = useRef(null)
   const prodCountdownRef = useRef(null)
   const [defectLoading, setDefectLoading] = useState(false)
@@ -519,7 +529,13 @@ export default function App() {
     setLoading(true); setLoadingMsg(`กำลังอ่าน ${file.name}...`)
     try {
       const parsed = await parseExcel(file)
-      setData(prev => ({ ...parsed, productionVisits: prev.productionVisits, productionDates: prev.productionDates }))
+      setData(prev => ({
+        ...parsed,
+        productionVisits: prev.productionVisits,
+        productionDates: prev.productionDates,
+        defectList:    (prev.defectList    && prev.defectList.length)    ? prev.defectList    : parsed.defectList,
+        defectColumns: (prev.defectColumns && prev.defectColumns.length) ? prev.defectColumns : parsed.defectColumns,
+      }))
     }
     catch { alert('ไม่สามารถอ่านไฟล์ได้') }
     finally { setLoading(false); setLoadingMsg('') }
@@ -537,7 +553,13 @@ export default function App() {
       const blob = await res.blob()
       const file = new File([blob], 'GoogleSheet.xlsx', { type: blob.type })
       const parsed = await parseExcel(file)
-      setData(prev => ({ ...parsed, productionVisits: prev.productionVisits, productionDates: prev.productionDates }))
+      setData(prev => ({
+        ...parsed,
+        productionVisits: prev.productionVisits,
+        productionDates: prev.productionDates,
+        defectList:    (prev.defectList    && prev.defectList.length)    ? prev.defectList    : parsed.defectList,
+        defectColumns: (prev.defectColumns && prev.defectColumns.length) ? prev.defectColumns : parsed.defectColumns,
+      }))
       setLastRefresh(new Date())
       setCountdown(AUTO_REFRESH_MS / 1000)
       if (!silent) setShowGS(false)
@@ -572,6 +594,12 @@ export default function App() {
   }, [prodSheetUrl])
 
   useEffect(() => {
+    try {
+      if (prodSheetUrl) localStorage.setItem(PROD_SHEET_STORAGE_KEY, prodSheetUrl)
+    } catch { /* localStorage unavailable */ }
+  }, [prodSheetUrl])
+
+  useEffect(() => {
     loadProdSheet()
     prodAutoRefreshRef.current = setInterval(() => {
       loadProdSheet()
@@ -588,7 +616,7 @@ export default function App() {
     const exportUrl = getSheetExportUrl(urlOverride || defectSheetUrl)
     if (!exportUrl) { setDefectError('URL ไม่ถูกต้อง'); return }
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 20000)
+    const timer = setTimeout(() => ctrl.abort(), 60000)
     setDefectLoading(true)
     setDefectError('')
     fetch(exportUrl, { signal: ctrl.signal })
@@ -596,7 +624,6 @@ export default function App() {
       .then(ab => {
         clearTimeout(timer)
         const defectData = parseDefectSheetOnly(ab)
-        // เขียนทับเฉพาะเมื่อ parse ได้ข้อมูลจริง
         if (defectData.defectList.length > 0 || defectData.defectColumns.length > 0) {
           setData(prev => ({ ...prev, ...defectData }))
         } else {
@@ -605,7 +632,7 @@ export default function App() {
       })
       .catch(e => {
         clearTimeout(timer)
-        setDefectError(e.name === 'AbortError' ? 'หมดเวลา (timeout 20s)' : `โหลดไม่ได้: ${e.message}`)
+        setDefectError(e.name === 'AbortError' ? 'หมดเวลา (timeout 60s)' : `โหลดไม่ได้: ${e.message}`)
       })
       .finally(() => setDefectLoading(false))
   }, [defectSheetUrl])
