@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import statement13 from '../data/statement13.json'
 
 const PROGRESS_COLOR = {
   'ดำเนินการแล้ว':          '#10b981',
@@ -24,6 +25,9 @@ const SUMMARY_COLOR = {
   'ส่งกลับแก้ไขรายงานติดตั้ง': '#7c3aed',
 }
 
+const STMT13_SET = new Set(statement13.map(x => String(x.hcode)))
+const mustSend13 = hospcode => STMT13_SET.has(String(hospcode))
+
 const PAGE_SIZE = 50
 
 export default function HospList({ data }) {
@@ -36,6 +40,7 @@ export default function HospList({ data }) {
   const [filterHIS, setFHIS]        = useState('')
   const [filterProvince, setFProv]  = useState('')
   const [filterRegion, setFReg]     = useState('')
+  const [filter13, setF13]          = useState('') // '', 'yes', 'no'
   const [page, setPage]             = useState(1)
 
   // unique options
@@ -56,9 +61,11 @@ export default function HospList({ data }) {
       if (filterHIS      && r.his      !== filterHIS)      return false
       if (filterProvince && r.province !== filterProvince) return false
       if (filterRegion   && String(r.region) !== filterRegion) return false
+      if (filter13 === 'yes' && !mustSend13(r.hospcode)) return false
+      if (filter13 === 'no'  &&  mustSend13(r.hospcode)) return false
       return true
     })
-  }, [list, search, filterProgress, filterStatus, filterSummary, filterHIS, filterProvince, filterRegion])
+  }, [list, search, filterProgress, filterStatus, filterSummary, filterHIS, filterProvince, filterRegion, filter13])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const rows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -75,6 +82,8 @@ export default function HospList({ data }) {
     )
   }
 
+  const stmt13Count = useMemo(() => list.filter(r => mustSend13(r.hospcode)).length, [list])
+
   return (
     <div className="page">
       <div className="section-label">รายชื่อ รพ.สต. ทั้งหมด</div>
@@ -84,6 +93,7 @@ export default function HospList({ data }) {
         {[
           { label: 'ทั้งหมด', val: list.length, color: '#2563eb' },
           { label: 'กรองแล้ว', val: filtered.length, color: '#10b981' },
+          { label: 'ต้องส่ง 13 แฟ้ม', val: stmt13Count, color: '#2563eb' },
         ].map((s, i) => (
           <div key={i} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.label}</span>
@@ -130,8 +140,14 @@ export default function HospList({ data }) {
           <option value="">ทุกระบบ HIS เดิม</option>
           {hisOpts.map(h => <option key={h} value={h}>{h}</option>)}
         </select>
-        {(search || filterProgress || filterStatus || filterSummary || filterHIS || filterProvince || filterRegion) && (
-          <button onClick={() => { setSearch(''); setFP(''); setFS(''); setFSumm(''); setFHIS(''); setFProv(''); setFReg(''); resetPage() }}
+        <select value={filter13} onChange={e => { setF13(e.target.value); resetPage() }}
+          style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+          <option value="">13 แฟ้ม (ทั้งหมด)</option>
+          <option value="yes">เฉพาะที่ต้องส่ง</option>
+          <option value="no">เฉพาะที่ไม่ต้องส่ง</option>
+        </select>
+        {(search || filterProgress || filterStatus || filterSummary || filterHIS || filterProvince || filterRegion || filter13) && (
+          <button onClick={() => { setSearch(''); setFP(''); setFS(''); setFSumm(''); setFHIS(''); setFProv(''); setFReg(''); setF13(''); resetPage() }}
             style={{ padding: '7px 14px', border: '1px solid #ef4444', borderRadius: 8, fontSize: 13, background: '#fee2e2', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}>
             ล้างตัวกรอง
           </button>
@@ -143,14 +159,14 @@ export default function HospList({ data }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
-              {['#','รหัส','ชื่อ รพ.สต.','เขต','จังหวัด','อำเภอ','วันที่ติดตั้ง','Progress','สถานะงาน','สรุปรายงาน','ระบบ HIS เดิม','ผู้ติดตั้ง'].map((h,i) => (
+              {['#','รหัส','ชื่อ รพ.สต.','เขต','จังหวัด','อำเภอ','วันที่ติดตั้ง','Progress','สถานะงาน','สรุปรายงาน','13 แฟ้ม','ระบบ HIS เดิม','ผู้ติดตั้ง'].map((h,i) => (
                 <th key={i} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: 12 }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>ไม่พบข้อมูล</td></tr>
+              <tr><td colSpan={13} style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>ไม่พบข้อมูล</td></tr>
             ) : rows.map((r, i) => (
               <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
@@ -165,6 +181,11 @@ export default function HospList({ data }) {
                 <td style={{ padding: '8px 12px' }}>{badge(r.progress, PROGRESS_COLOR)}</td>
                 <td style={{ padding: '8px 12px' }}>{badge(r.status, STATUS_COLOR)}</td>
                 <td style={{ padding: '8px 12px' }}>{badge(r.summary, SUMMARY_COLOR)}</td>
+                <td style={{ padding: '8px 12px' }}>
+                  {mustSend13(r.hospcode)
+                    ? <span style={{ background: '#2563eb22', color: '#2563eb', border: '1px solid #2563eb55', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>📁 13 แฟ้ม</span>
+                    : <span style={{ color: 'var(--text-muted)' }}>–</span>}
+                </td>
                 <td style={{ padding: '8px 12px' }}>{badge(r.his, HIS_COLOR)}</td>
                 <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{r.responsible || '-'}</td>
               </tr>
