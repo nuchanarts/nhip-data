@@ -13,6 +13,7 @@ import Workload from './pages/Workload'
 import InstallerMgmt from './pages/InstallerMgmt'
 import HospList from './pages/HospList'
 import StatementOFC from './pages/StatementOFC'
+import NDPLOT3 from './pages/NDPLOT3'
 import ProductionData from './pages/ProductionData'
 import RetroKey from './pages/RetroKey'
 import { useGlobalResizableColumns } from './hooks/useResizableColumns'
@@ -472,6 +473,7 @@ const PAGES = {
   installer:  InstallerMgmt,
   hosplist:   HospList,
   statementofc: StatementOFC,
+  ndplot3:    NDPLOT3,
   retrokey:   RetroKey,
 }
 
