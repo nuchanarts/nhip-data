@@ -11,6 +11,7 @@ const MENU = [
   { key: 'installer', icon: '👤', label: 'ผลสำเร็จรายบุคคล',     sub: 'Installer Management' },
   // { key: 'retrokey',  icon: '🔁', label: 'คีย์ย้อนหลัง',        sub: 'คาดว่าใช้คู่ขนาน' },
   { key: 'hosplist',  icon: '🏨', label: 'รายชื่อ รพ.สต.',      sub: 'Hospital List' },
+  { key: 'statementofc', icon: '📁', label: 'ส่ง 13 แฟ้ม OFC',   sub: 'Statement OFC' },
 ]
 
 export default function Sidebar({ current, onNavigate, isOpen, onClose }) {

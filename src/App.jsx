@@ -12,6 +12,7 @@ import Training from './pages/Training'
 import Workload from './pages/Workload'
 import InstallerMgmt from './pages/InstallerMgmt'
 import HospList from './pages/HospList'
+import StatementOFC from './pages/StatementOFC'
 import ProductionData from './pages/ProductionData'
 import RetroKey from './pages/RetroKey'
 import { useGlobalResizableColumns } from './hooks/useResizableColumns'
@@ -470,6 +471,7 @@ const PAGES = {
   workload:   Workload,
   installer:  InstallerMgmt,
   hosplist:   HospList,
+  statementofc: StatementOFC,
   retrokey:   RetroKey,
 }
 
