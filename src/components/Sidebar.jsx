@@ -1,5 +1,8 @@
 const MENU = [
-  { key: 'overview',  icon: '🏠', label: 'ภาพรวมโครงการ',     sub: 'Overview' },
+  { key: 'hosplist',  icon: '🏨', label: 'รายชื่อ รพ.สต.',      sub: 'Hospital List' },
+  { key: 'pilotpcu',  icon: '🩺', label: 'รพ.สต. นำร่องปฐมภูมิ', sub: '1 อำเภอ 1 เครือข่าย' },
+  { key: 'statementofc', icon: '📁', label: 'ส่ง 13 แฟ้ม OFC',   sub: 'Statement OFC' },
+  { key: 'ndplot3',   icon: '📋', label: 'NDPLOT3',            sub: 'NHSODP Lot 3' },
   { key: 'production',icon: '📈', label: 'ข้อมูลการใช้งาน',    sub: 'Usage Data' },
   { key: 'install',   icon: '🚀', label: 'รายงานการติดตั้ง',    sub: 'Installation Report' },
   { key: 'volume',    icon: '📊', label: 'ข้อมูลการติดตั้งระบบ', sub: 'Installation Data' },
@@ -10,9 +13,7 @@ const MENU = [
   { key: 'workload',  icon: '⏱️', label: 'Workload Tracking',   sub: 'ชั่วโมงทำงาน' },
   { key: 'installer', icon: '👤', label: 'ผลสำเร็จรายบุคคล',     sub: 'Installer Management' },
   // { key: 'retrokey',  icon: '🔁', label: 'คีย์ย้อนหลัง',        sub: 'คาดว่าใช้คู่ขนาน' },
-  { key: 'hosplist',  icon: '🏨', label: 'รายชื่อ รพ.สต.',      sub: 'Hospital List' },
-  { key: 'statementofc', icon: '📁', label: 'ส่ง 13 แฟ้ม OFC',   sub: 'Statement OFC' },
-  { key: 'ndplot3',   icon: '📋', label: 'NDPLOT3',            sub: 'NHSODP Lot 3' },
+  { key: 'overview',  icon: '🏠', label: 'ภาพรวมโครงการ',     sub: 'Overview' },
 ]
 
 export default function Sidebar({ current, onNavigate, isOpen, onClose }) {

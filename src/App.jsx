@@ -12,6 +12,7 @@ import Training from './pages/Training'
 import Workload from './pages/Workload'
 import InstallerMgmt from './pages/InstallerMgmt'
 import HospList from './pages/HospList'
+import PilotPCU from './pages/PilotPCU'
 import StatementOFC from './pages/StatementOFC'
 import NDPLOT3 from './pages/NDPLOT3'
 import ProductionData from './pages/ProductionData'
@@ -19,7 +20,7 @@ import RetroKey from './pages/RetroKey'
 import { useGlobalResizableColumns } from './hooks/useResizableColumns'
 import './index.css'
 
-const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1GIDlqwv4fCXES4wQEzzJjJ0CK979FKB-/edit?usp=sharing&ouid=102765207545322381480&rtpof=true&sd=true'
+const PROD_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1gwQ-1DCsC_NU6CBP4txDXVNCS1ANV414/edit?gid=2121442775#gid=2121442775'
 const PROD_SHEET_STORAGE_KEY = 'nhip:prodSheetUrl'
 const DEFECT_SHEET_DEFAULT_URL = 'https://docs.google.com/spreadsheets/d/1voV3mHQi7bH2PbBeWaVrk0EaUs-9BnqMpKc53oI__RE/edit?usp=sharing'
 const DEFECT_REFRESH_MS = 10 * 60 * 1000 // 10 นาที
@@ -472,6 +473,7 @@ const PAGES = {
   workload:   Workload,
   installer:  InstallerMgmt,
   hosplist:   HospList,
+  pilotpcu:   PilotPCU,
   statementofc: StatementOFC,
   ndplot3:    NDPLOT3,
   retrokey:   RetroKey,
